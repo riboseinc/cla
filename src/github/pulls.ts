@@ -45,3 +45,13 @@ export async function fetchPrCommitters(api: GithubApi, installationId: number, 
 }
 
 const obj = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {});
+
+/** Head SHA of a PR (the re-check path after an attribution election). */
+export async function fetchPrHeadSha(api: GithubApi, installationId: number, repoFullName: string, prNumber: number): Promise<string> {
+  const res = await api.request(installationId, "GET", `/repos/${repoFullName}/pulls/${prNumber}`);
+  if (res.status !== 200) throw new Error(`pull lookup failed: ${res.status}`);
+  const head = obj(JSON.parse(res.body))["head"];
+  const sha = head && typeof head === "object" ? (head as Record<string, unknown>)["sha"] : undefined;
+  if (typeof sha !== "string") throw new Error("pull head carries no sha");
+  return sha;
+}

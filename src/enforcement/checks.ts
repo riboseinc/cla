@@ -1,5 +1,5 @@
 import type { GithubApi } from "../github/api";
-import type { PrVerdict } from "@riboseinc/cla-kernel";
+import type { AgreementRef, PrVerdict } from "@riboseinc/cla-kernel";
 
 /**
  * Check-run + comment mechanics for the `cla/ribose` check
@@ -51,13 +51,20 @@ export async function createCheckRun(
 
 // ---- comments ----
 
-export function commentBody(verdict: PrVerdict, portalBase: string, notices: string[] = []): string {
+export function commentBody(
+  verdict: PrVerdict,
+  portalBase: string,
+  opts: { notices?: string[]; attributionLinks?: Record<string, Array<{ label: string; url: string }>> } = {},
+): string {
   const rows: string[] = [];
   for (const c of verdict.committers) {
     if (c.status === "covered") {
       rows.push(`| @${c.login ?? "(unlinked)"} | covered (${c.path}${c.agreement && "orgSlug" in c.agreement ? ` — ${c.agreement.orgSlug}` : ""}) |`);
     } else if (c.status === "must-specify") {
-      rows.push(`| @${c.login ?? "(unlinked)"} | **specify the agreement** — ${c.options.map((o) => (o.kind === "icla" ? "Individual CLA" : o.kind === "staff" ? `staff (${o.org})` : `${o.orgSlug} OCLA`)).join(", ")} |`);
+      const links = (opts.attributionLinks?.[c.login ?? ""] ?? c.options.map((o) => ({ label: o.kind === "icla" ? "Individual CLA" : o.kind === "staff" ? `staff (${o.org})` : `${o.orgSlug} OCLA`, url: `${portalBase}/agreements` })))
+        .map((l) => `[${l.label}](${l.url})`)
+        .join(" · ");
+      rows.push(`| @${c.login ?? "(unlinked)"} | **specify under which agreement this PR is contributed**: ${links} |`);
     } else {
       rows.push(`| @${c.login ?? "(unlinked)"} | **missing** — [sign the ICLA](${portalBase}/icla) or [find your organization](${portalBase}/organizations) |`);
     }
@@ -69,8 +76,43 @@ export function commentBody(verdict: PrVerdict, portalBase: string, notices: str
     "| Committer | Status |",
     "|---|---|",
     ...rows,
-    ...(notices.length > 0 ? ["", ...notices] : []),
+    ...(opts.notices?.length ? ["", ...opts.notices] : []),
   ].join("\n");
+}
+
+/** The closing statement on merge — the public attribution record (docs/design.md §3.11). */
+export const CLOSING_MARKER = "<!-- ribose-cla:closing -->";
+
+export function closingComment(verdict: PrVerdict, elected: Record<string, AgreementRef>): string {
+  const lines = Object.keys(elected).length > 0 ? ["", "Elections recorded during review:"] : [];
+  for (const [login, a] of Object.entries(elected)) {
+    lines.push(`- @${login} — under ${a.kind === "icla" ? `the Individual CLA v${a.version}` : a.kind === "staff" ? `Ribose staff coverage (${a.org})` : `the ${a.orgSlug} OCLA v${a.version}`}`);
+  }
+  const rows = verdict.committers.map((c) => {
+    if (c.status === "covered") {
+      const under =
+        c.path === "allowlist"
+          ? "configuration allowlist"
+          : c.path === "staff"
+            ? `Ribose staff coverage (${(c.agreement as { org: string }).org})`
+            : c.agreement && "orgSlug" in c.agreement
+              ? `the ${c.agreement.orgSlug} OCLA v${c.agreement.version}`
+              : `the Individual CLA v${(c.agreement as { version: string }).version}`;
+      return `- @${c.login ?? "(unlinked)"} — contributed under **${under}**`;
+    }
+    if (c.status === "must-specify") return `- @${c.login ?? "(unlinked)"} — contributed under an election recorded during review`;
+    return `- @${c.login ?? "(unlinked)"} — **merged without CLA coverage** (visible in history)`;
+  });
+  return [CLOSING_MARKER, "**CLA attribution for this merged contribution**", ...rows, ...lines].join("\n");
+}
+
+export async function postClosingComment(api: GithubApi, installationId: number, repoFullName: string, prNumber: number, body: string): Promise<void> {
+  const list = await api.request(installationId, "GET", `/repos/${repoFullName}/issues/${prNumber}/comments?per_page=100`);
+  if (list.status !== 200) throw new Error(`comment listing failed: ${list.status}`);
+  const comments = JSON.parse(list.body) as Array<{ id: number; body?: string }>;
+  if (comments.some((c) => typeof c.body === "string" && c.body.includes(CLOSING_MARKER))) return; // dedupe redeliveries
+  const res = await api.request(installationId, "POST", `/repos/${repoFullName}/issues/${prNumber}/comments`, { body: { body } });
+  if (res.status !== 201) throw new Error(`closing comment failed: ${res.status}`);
 }
 
 export async function upsertComment(

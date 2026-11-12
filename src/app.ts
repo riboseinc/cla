@@ -5,10 +5,12 @@ import type { FetchLike } from "./github/api";
 import { GENERATED_CONFIG } from "./generated/config";
 import { parseEvent, verifyWebhookSignature, installationId, repoFullName } from "./github/webhook";
 import { GithubApi } from "./github/api";
-import { evaluatePullRequest, preRegisterRepos, type EnforcementDeps } from "./enforcement/handler";
+import { evaluatePullRequest, closeMergedPullRequest, preRegisterRepos, type EnforcementDeps } from "./enforcement/handler";
 import { discover, authorizationRequest, exchangeCode, verifyIdToken, resetOidcCaches } from "./portal/oidc";
 import { githubAuthorizeUrl, exchangeGithubCode, fetchGithubUser, randomToken } from "./portal/github-oauth";
 import { SESSION_COOKIE, CSRF_COOKIE, makeSessionCookie, readSessionCookie, makeStateCookie, readStateCookie, newCsrfToken } from "./portal/session";
+import { readAttributionToken, optionKey } from "./portal/attribution";
+import { fetchPrHeadSha } from "./github/pulls";
 import { appendRecord } from "./store/write";
 
 /**
@@ -48,7 +50,8 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         tokenCache: TOKEN_CACHE,
         etagCache: ETAG_CACHE,
       });
-      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, staff: {} };
+      // attribution tokens are verified by the portal (/attribute) — signed with the portal secret
+      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, staff: {}, attributionSecret: env.OIDC_CLIENT_SECRET };
 
       try {
         if (evt.event === "pull_request" && ["opened", "synchronize", "reopened"].includes(evt.action ?? "")) {
@@ -63,6 +66,17 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           }
           const r = await evaluatePullRequest(deps, { installationId: inst, repoFullName: repo, prNumber: number, headSha: sha });
           return c.json({ ok: true, outcome: r.outcome });
+        }
+        if (evt.event === "pull_request" && evt.action === "closed") {
+          const pr = evt.payload["pull_request"] as Record<string, unknown> | undefined;
+          const number = evt.payload["number"];
+          const repo = repoFullName(evt.payload);
+          const inst = installationId(evt.payload);
+          if (pr?.["merged"] !== true || !repo || !inst || typeof number !== "number") {
+            return c.json({ ok: true, ignored: "closed-without-merge" });
+          }
+          const r = await closeMergedPullRequest(deps, { installationId: inst, repoFullName: repo, prNumber: number });
+          return c.json({ ok: true, closing: r.posted });
         }
         if ((evt.event === "installation_repositories" && evt.action === "added") || (evt.event === "installation" && evt.action === "created")) {
           const inst = installationId(evt.payload);
@@ -143,6 +157,30 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       const session = await readSessionCookie(env.OIDC_CLIENT_SECRET!, c.req.header("cookie")?.split(";").find((x) => x.trim().startsWith(`${SESSION_COOKIE}=`))?.split("=").slice(1).join("="), now());
       if (!session) return c.json({ error: "sign in required" }, 401);
       return c.json({ bound: { ribose_id_sub: session.sub, github_login: session.login, github_id: session.githubId }, email: session.email ?? null, email_verified: session.emailVerified === true });
+    });
+
+    // The must-specify election surface (docs/design.md §3.11): the bot's
+    // signed link lands here; only the committer may elect; recording
+    // triggers an immediate re-check.
+    app.get("/attribute", async (c) => {
+      const session = await readSessionCookie(env.OIDC_CLIENT_SECRET!, c.req.header("cookie")?.split(";").find((x) => x.trim().startsWith(`${SESSION_COOKIE}=`))?.split("=").slice(1).join("="), now());
+      if (!session) return c.json({ error: "sign in required" }, 401);
+      const tokenData = await readAttributionToken(env.OIDC_CLIENT_SECRET!, c.req.query("t"), now());
+      if (!tokenData) return c.json({ error: "invalid or expired attribution link" }, 400);
+      if (session.login !== tokenData.login.toLowerCase()) return c.json({ error: "only the committer may elect" }, 403);
+      const chosen = tokenData.options.find((o) => optionKey(o) === c.req.query("pick"));
+      if (!chosen) return c.json({ error: "pick is not among the offered agreements" }, 400);
+
+      const api = new GithubApi({ fetcher, now, appId: env.GITHUB_APP_ID ?? "", privateKeyPem: (env.APP_PRIVATE_KEY ?? "").replaceAll("\\n", "\n"), tokenCache: TOKEN_CACHE, etagCache: ETAG_CACHE });
+      await appendRecord(
+        { api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now },
+        "attribution",
+        { id: randomToken(), repo: tokenData.repo, pr: tokenData.pr, login: session.login, agreement: chosen, recorded_at: new Date(now()).toISOString() },
+      );
+      const sha = await fetchPrHeadSha(api, tokenData.installationId, tokenData.repo, tokenData.pr);
+      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, staff: {}, attributionSecret: env.OIDC_CLIENT_SECRET };
+      await evaluatePullRequest(deps, { installationId: tokenData.installationId, repoFullName: tokenData.repo, prNumber: tokenData.pr, headSha: sha });
+      return c.json({ recorded: true, agreement: chosen });
     });
 
     app.post("/signout", async (c) => {

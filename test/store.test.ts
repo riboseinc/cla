@@ -105,7 +105,7 @@ describe("loadSnapshot: the record tree becomes a kernel snapshot", () => {
     expect(snapshot.oclas[0]?.covered.map((r) => r.githubLogin)).toEqual(["a"]);
 
     const committer: Committer = { login: "b" };
-    const v = await loadAndEvaluate(fixture(files), EDITIONS, { context: { org: "o", repo: "r" }, committers: [committer] }, CFG, {});
+    const v = await loadAndEvaluate(fixture(files), EDITIONS, { context: { org: "o", repo: "r", pr: 1 }, committers: [committer] }, CFG, {});
     expect(v.verdict.committers[0]?.status).toBe("missing");
   });
 
@@ -126,7 +126,7 @@ describe("loadSnapshot: the record tree becomes a kernel snapshot", () => {
     const files = {
       "icla/2026/09/old.json": { id: "old", githubLogin: "a", claEdition: { kind: "icla", version: "0.9", textSha256: "oldsha" } },
     };
-    const v = await loadAndEvaluate(fixture(files), EDITIONS, { context: { org: "o", repo: "r" }, committers: [{ login: "a" }] }, CFG, {});
+    const v = await loadAndEvaluate(fixture(files), EDITIONS, { context: { org: "o", repo: "r", pr: 1 }, committers: [{ login: "a" }] }, CFG, {});
     expect(v.verdict.committers[0]?.status).toBe("missing");
   });
 });
