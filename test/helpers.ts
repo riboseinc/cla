@@ -63,7 +63,15 @@ export function makeFixture(): Fixture {
 
   const fetcher: FetchLike = async (url, init) => {
     const u = new URL(url);
-    calls.push({ method: init?.method ?? "GET", url: url.toString(), body: init?.body ? JSON.parse(init.body as string) : undefined, init });
+    const contentType = Object.entries((init?.headers as Record<string, string> | undefined) ?? {})
+      .find(([k]) => k.toLowerCase() === "content-type")?.[1];
+    let loggedBody: unknown;
+    if (typeof init?.body === "string") {
+      loggedBody = contentType?.includes("json") ? JSON.parse(init.body) : init.body; // form bodies stay strings
+    } else if (init?.body instanceof URLSearchParams) {
+      loggedBody = init.body.toString();
+    }
+    calls.push({ method: init?.method ?? "GET", url: url.toString(), body: loggedBody, init });
 
     const override = routes.get(u.pathname);
     if (override) {
@@ -88,6 +96,7 @@ export function makeFixture(): Fixture {
     }
     // write-endpoint defaults (tests assert on captured calls)
     if (u.pathname.endsWith("/check-runs") && init?.method === "POST") return json(201, {});
+    if (u.pathname.includes("/contents/") && init?.method === "PUT") return json(201, { commit: { sha: "commit1" } });
     if (/\/issues\/\d+\/comments$/.test(u.pathname) && init?.method === "POST") return json(201, {});
     if (/\/issues\/\d+\/comments$/.test(u.pathname)) return json(200, []);
     if (/\/issues\/comments\/\d+$/.test(u.pathname) && init?.method === "PATCH") return json(200, {});
