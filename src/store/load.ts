@@ -1,6 +1,6 @@
 import type { Editions, IclaRecord, OclaRecord, PrVerdict, StoreSnapshot } from "@riboseinc/cla-kernel";
 import { evaluate } from "@riboseinc/cla-kernel";
-import { foldScheduleA, parseIcla, parseOcla, parseOclaMod, parseRevocation, parseAttribution, parseRole, type OclaModRecord, type RoleRecord } from "./records";
+import { foldScheduleA, parseIcla, parseOcla, parseOclaMod, parseRevocation, parseAttribution, parseRole, parseLink, type OclaModRecord, type RoleRecord, type LinkRecord } from "./records";
 
 /**
  * The store leg: the data repo's record tree -> a kernel snapshot.
@@ -27,6 +27,8 @@ export type LoadedSnapshot = {
   mods: OclaModRecord[];
   /** org_admin role records (portal authorization). */
   roles: RoleRecord[];
+  /** GitHub-handle <-> identity-subject bindings (staff resolution, issue #10). */
+  links: LinkRecord[];
 };
 
 export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise<LoadedSnapshot> {
@@ -37,6 +39,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
   const modsByOcla = new Map<string, OclaModRecord[]>();
   const mods: OclaModRecord[] = [];
   const roles: RoleRecord[] = [];
+  const links: LinkRecord[] = [];
   const revokedIds: string[] = [];
   const attributions: NonNullable<StoreSnapshot["attributions"]> = [];
   const rejected: { path: string; reason: string }[] = [];
@@ -67,6 +70,9 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
     } else if (path.startsWith("role/")) {
       const r = parseRole(parsed);
       r ? roles.push(r) : rejected.push({ path, reason: "invalid role" });
+    } else if (path.startsWith("link/")) {
+      const r = parseLink(parsed);
+      r ? links.push(r) : rejected.push({ path, reason: "invalid link" });
     } else if (path.startsWith("revocation/")) {
       const target = parseRevocation(parsed);
       target ? revokedIds.push(target) : rejected.push({ path, reason: "invalid revocation" });
@@ -97,6 +103,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
     rejected,
     mods,
     roles: roles.filter((r) => !revoked.has(r.id)),
+    links: links.filter((l) => !revoked.has(l.id)),
   };
 }
 

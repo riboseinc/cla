@@ -58,7 +58,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         tokenCache: TOKEN_CACHE,
         etagCache: ETAG_CACHE,
       });
-      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, staff: {}, attributionSecret: env.OIDC_CLIENT_SECRET };
+      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, fetcher, serviceToken: env.SERVICE_TOKEN, attributionSecret: env.OIDC_CLIENT_SECRET };
 
       try {
         if (evt.event === "pull_request" && ["opened", "synchronize", "reopened"].includes(evt.action ?? "")) {
@@ -281,7 +281,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         { id: randomToken(), repo: tokenData.repo, pr: tokenData.pr, login: session.login, agreement: chosen, recorded_at: new Date(now()).toISOString() },
       );
       const sha = await fetchPrHeadSha(api, tokenData.installationId, tokenData.repo, tokenData.pr);
-      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, staff: {}, attributionSecret: env.OIDC_CLIENT_SECRET };
+      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, fetcher, serviceToken: env.SERVICE_TOKEN, attributionSecret: env.OIDC_CLIENT_SECRET };
       await evaluatePullRequest(deps, { installationId: tokenData.installationId, repoFullName: tokenData.repo, prNumber: tokenData.pr, headSha: sha });
       return c.json({ recorded: true, agreement: chosen });
     });

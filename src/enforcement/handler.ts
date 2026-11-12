@@ -1,4 +1,5 @@
-import type { AgreementRef, StaffMap } from "@riboseinc/cla-kernel";
+import type { AgreementRef } from "@riboseinc/cla-kernel";
+import type { FetchLike } from "../github/api";
 import { evaluate } from "@riboseinc/cla-kernel";
 import type { AppConfig } from "../config";
 import { kernelEditions } from "../config";
@@ -9,6 +10,7 @@ import { makeListRecords } from "../store/github-store";
 import { checkRunBody, createCheckRun, commentBody, upsertComment, postClosingComment, closingComment, preRegisterCheck, CHECK_NAME } from "./checks";
 import { signAttributionToken, optionKey } from "../portal/attribution";
 import { signCompletionToken, isAgreeCommand } from "../portal/completion";
+import { buildStaffMap } from "../identity/staff";
 
 /**
  * The pull_request orchestration (docs/design.md §5). Every store or
@@ -19,8 +21,10 @@ import { signCompletionToken, isAgreeCommand } from "../portal/completion";
 export type EnforcementDeps = {
   api: GithubApi;
   config: AppConfig;
-  /** staff resolution lands in issue #10; empty until then (fail-closed). */
-  staff: StaffMap;
+  /** raw fetcher for the identity-service subject-roles lookups (issue #10) */
+  fetcher: FetchLike;
+  /** identity-service token; unset = no staff path at all (fail-closed) */
+  serviceToken?: string;
   /** HMAC secret for attribution-link tokens (the identity secret). */
   attributionSecret?: string;
 };
@@ -55,11 +59,17 @@ export async function evaluatePullRequest(
   // Data-repo reads go through the installation that OWNS the data repo
   // (config's data_installation_id) — one app JWT mints tokens for any
   // of its installations; installations never span orgs.
-  const { snapshot } = await loadSnapshot(
+  const loaded = await loadSnapshot(
     { listRecords: makeListRecords(deps.api, deps.config.github.dataInstallationId, deps.config.github.dataRepo) },
     editions,
   );
-  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers }, snapshot, deps.config, editions, deps.staff);
+  // staff resolution via the identity service: login -> link -> subject -> roles
+  const { staffMap } = await buildStaffMap(
+    { fetcher: deps.fetcher, issuer: deps.config.identity.issuer, serviceToken: deps.serviceToken },
+    committers.flatMap((c) => (c.login ? [c.login] : [])),
+    loaded.links,
+  );
+  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers }, loaded.snapshot, deps.config, editions, staffMap);
 
   const portalBase = `https://${deps.config.instance.portalHost}`;
   // must-specify logins get per-option signed links through the portal
@@ -88,15 +98,20 @@ export async function closeMergedPullRequest(
   if (deps.config.coverage.reposWithoutCla.includes(full.toLowerCase())) return { posted: false };
 
   const editions = kernelEditions(deps.config);
-  const { snapshot } = await loadSnapshot(
+  const loaded = await loadSnapshot(
     { listRecords: makeListRecords(deps.api, deps.config.github.dataInstallationId, deps.config.github.dataRepo) },
     editions,
   );
   const { committers } = await fetchPrCommitters(deps.api, args.installationId, full, args.prNumber);
-  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers }, snapshot, deps.config, editions, deps.staff);
+  const { staffMap } = await buildStaffMap(
+    { fetcher: deps.fetcher, issuer: deps.config.identity.issuer, serviceToken: deps.serviceToken },
+    committers.flatMap((c) => (c.login ? [c.login] : [])),
+    loaded.links,
+  );
+  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers }, loaded.snapshot, deps.config, editions, staffMap);
 
   const elected: Record<string, AgreementRef> = {};
-  for (const a of snapshot.attributions ?? []) {
+  for (const a of loaded.snapshot.attributions ?? []) {
     if (a.pr === args.prNumber && a.repo.toLowerCase() === full.toLowerCase() && !elected[a.login]) elected[a.login] = a.agreement;
   }
   await postClosingComment(deps.api, args.installationId, full, args.prNumber, closingComment(verdict, elected));

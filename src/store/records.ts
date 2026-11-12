@@ -27,6 +27,15 @@ export type RoleRecord = {
   source: "enrollment" | "staff" | "portal";
 };
 
+export type LinkRecord = {
+  id: string;
+  riboseSub: string;
+  githubLogin: string;
+  githubId: number;
+  linkedAt: string;
+  source: string;
+};
+
 export type AttributionRecord = {
   id: string;
   repo: string;
@@ -157,6 +166,23 @@ export function parseRole(v: unknown): RoleRecord | undefined {
     grantedAt: str(v["granted_at"]) ?? str(v["grantedAt"]) ?? "",
     grantedBy: str(v["granted_by"]) ?? str(v["grantedBy"]),
     source: (str(v["source"]) as RoleRecord["source"]) ?? "portal",
+  };
+}
+
+export function parseLink(v: unknown): LinkRecord | undefined {
+  if (!isObj(v)) return undefined;
+  const id = str(v["id"]);
+  const riboseSub = str(v["riboseSub"]) ?? str(v["ribose_id_sub"]);
+  const login = str(v["githubLogin"]) ?? str(v["github_login"]);
+  const ghId = v["githubId"] ?? v["github_id"];
+  if (!id || !riboseSub || !login || typeof ghId !== "number") return undefined;
+  return {
+    id,
+    riboseSub,
+    githubLogin: login,
+    githubId: ghId,
+    linkedAt: str(v["linkedAt"]) ?? str(v["linked_at"]) ?? "",
+    source: str(v["source"]) ?? "unknown",
   };
 }
 
