@@ -19,6 +19,9 @@ export type Env = {
   SERVICE_TOKEN?: string;
   /** D1 (join-request queue + ephemeral state). */
   DB?: D1Database;
+  /** Resend-shaped mail provider; unset = honest no-op (notify leg). */
+  MAIL_PROVIDER_URL?: string;
+  MAIL_PROVIDER_KEY?: string;
 
   [key: string]: unknown;
 };

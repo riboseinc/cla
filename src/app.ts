@@ -18,6 +18,7 @@ import { kernelEditions } from "./config";
 import { d1, hasPendingRequest, requestJoin, pendingRequests, decideRequest, audit } from "./store/db";
 import { verifyEvidence } from "./store/evidence";
 import { sha256Hex } from "./portal/oidc";
+import { sendMail, mailDeps } from "./notify/mail";
 import { fetchPrHeadSha } from "./github/pulls";
 import { appendRecord } from "./store/write";
 import { readCookie, sessionOf, csrfOk, signerView, editionText, portalApi } from "./portal/helpers";
@@ -414,6 +415,14 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         riboseIdSub: session.sub,
       });
       const enrollToken = await signEnrollmentToken(env.OIDC_CLIENT_SECRET!, oclaId, pocEmail, now());
+      for (const to of [signatoryEmail, pocEmail]) {
+        await sendMail(
+          mailDeps(env, GENERATED_CONFIG.coverage.notify.from, false, fetcher),
+          to,
+          `Organization CLA executed for ${orgName}`,
+          `The Software Grant and Organization CLA v${GENERATED_CONFIG.legal.current.ocla} for ${orgName} was executed by ${session.login} (sha256 ${edition.sha256}). Schedule A lists ${covered.length} designated employees. You will receive a Point-of-Contact enrollment link separately.`,
+        );
+      }
       return c.json({ signed: true, oclaId, orgSlug: slug, coveredCount: covered.length, pocEnrollmentUrl: `${portalBase}/enroll?t=${enrollToken}` });
     });
 
@@ -454,10 +463,11 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       if (!session) return c.json({ error: "sign in required" }, 401);
       const db = d1(env);
       if (!db) return c.json({ error: "join queue unavailable (D1 unconfigured)" }, 503);
-      const { snapshot } = await loadSnapshot(
+      const loaded = await loadSnapshot(
         { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
         kernelEditions(GENERATED_CONFIG),
       );
+      const snapshot = loaded.snapshot;
       const ocla = snapshot.oclas.find((o) => o.orgSlug === c.req.param("slug"));
       if (!ocla) return c.json({ error: "no such organization" }, 404);
       if (ocla.edition.textSha256 !== kernelEditions(GENERATED_CONFIG).ocla.textSha256) {
@@ -472,7 +482,18 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         email: session.email ?? null,
         requestedAt: new Date(now()).toISOString(),
       });
-      return c.json({ requested: true, org: ocla.orgSlug, pocEmailOnFile: true });
+      const pending = await pendingRequests(db, ocla.id);
+      const digest = pending.length >= GENERATED_CONFIG.coverage.notify.digestThreshold;
+      const pocEmail = loaded.oclaPocs[ocla.id];
+      const mail = pocEmail
+        ? await sendMail(
+            mailDeps(env, GENERATED_CONFIG.coverage.notify.from, digest, fetcher),
+            pocEmail,
+            `CLA join request for ${ocla.orgSlug}`,
+            `${session.login} (${session.email ?? "no email"}) requests Schedule-A coverage under your Organization CLA. Approve or reject at ${portalBase}/admin-orgs/${ocla.orgSlug}.`,
+          )
+        : { sent: false };
+      return c.json({ requested: true, org: ocla.orgSlug, notified: mail.sent });
     });
 
     const adminOf = async (c: { req: { param: (k: string) => string; header: (h: string) => string | undefined } }) => {
@@ -526,10 +547,12 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       const decision = form["decision"] === "approve" ? "approved" : form["decision"] === "reject" ? "rejected" : null;
       if (!decision) return c.json({ error: "decision must be approve/reject" }, 400);
 
+      let requesterEmail: string | undefined;
       if (decision === "approved") {
         const pending = await pendingRequests(db, auth.ocla.id);
         const req = pending.find((r) => r.id === id);
         if (!req) return c.json({ error: "no such pending request" }, 404);
+        requesterEmail = req.email ?? undefined;
         // the LEGAL outcome: an append-only Schedule-A addition, actor recorded
         await appendRecord({ api: portalApi(env, fetcher, now), installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "ocla-mod", {
           id: randomToken(),
@@ -539,8 +562,21 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           actorRiboseSub: auth.session.sub,
           reason: "join-request approval",
         });
+      } else {
+        const pending = await pendingRequests(db, auth.ocla.id);
+        requesterEmail = pending.find((r) => r.id === id)?.email ?? undefined;
       }
       const ok = await decideRequest(db, id, decision, auth.session.sub, new Date(now()).toISOString());
+      if (requesterEmail) {
+        await sendMail(
+          mailDeps(env, GENERATED_CONFIG.coverage.notify.from, false, fetcher),
+          requesterEmail,
+          `Your CLA coverage request was ${decision}`,
+          decision === "approved"
+            ? `Your request for Schedule-A coverage under ${auth.ocla.orgSlug}'s Organization CLA was APPROVED. Future contributions are covered from now on.`
+            : `Your request for Schedule-A coverage under ${auth.ocla.orgSlug}'s Organization CLA was rejected by the organization's Point of Contact.`,
+        );
+      }
       return c.json({ decided: decision, applied: ok });
     });
 

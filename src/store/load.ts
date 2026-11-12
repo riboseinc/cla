@@ -1,6 +1,6 @@
 import type { Editions, IclaRecord, OclaRecord, PrVerdict, StoreSnapshot } from "@riboseinc/cla-kernel";
 import { evaluate } from "@riboseinc/cla-kernel";
-import { foldScheduleA, parseIcla, parseOcla, parseOclaMod, parseRevocation, parseAttribution, parseRole, parseLink, type OclaModRecord, type RoleRecord, type LinkRecord } from "./records";
+import { foldScheduleA, parseIcla, parseOcla, parseOclaMod, parseRevocation, parseAttribution, parseRole, parseLink, type OclaModRecord, type RoleRecord, type LinkRecord, type OclaFile } from "./records";
 
 /**
  * The store leg: the data repo's record tree -> a kernel snapshot.
@@ -29,13 +29,15 @@ export type LoadedSnapshot = {
   roles: RoleRecord[];
   /** GitHub-handle <-> identity-subject bindings (staff resolution, issue #10). */
   links: LinkRecord[];
+  /** ocla id -> PoC email (notify leg). */
+  oclaPocs: Record<string, string | undefined>;
 };
 
 export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise<LoadedSnapshot> {
   const { paths, read } = await deps.listRecords();
 
   const iclas: IclaRecord[] = [];
-  const oclas: OclaRecord[] = [];
+  const oclas: OclaFile[] = [];
   const modsByOcla = new Map<string, OclaModRecord[]>();
   const mods: OclaModRecord[] = [];
   const roles: RoleRecord[] = [];
@@ -104,6 +106,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
     mods,
     roles: roles.filter((r) => !revoked.has(r.id)),
     links: links.filter((l) => !revoked.has(l.id)),
+    oclaPocs: Object.fromEntries(oclas.map((o) => [o.id, o.poc?.email ?? undefined])),
   };
 }
 
