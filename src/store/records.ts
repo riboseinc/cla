@@ -17,6 +17,16 @@ export type OclaModRecord = {
   recordedAt: string;
 };
 
+export type RoleRecord = {
+  id: string;
+  role: "org_admin";
+  oclaId: string;
+  riboseSub: string;
+  grantedAt: string;
+  grantedBy?: string;
+  source: "enrollment" | "staff" | "portal";
+};
+
 export type AttributionRecord = {
   id: string;
   repo: string;
@@ -131,6 +141,23 @@ export function parseRevocation(v: unknown): string | undefined {
   if (!isObj(v)) return undefined;
   const target = isObj(v["target"]) ? str(v["target"]["id"]) : undefined;
   return target ?? str(v["targetId"]);
+}
+
+export function parseRole(v: unknown): RoleRecord | undefined {
+  if (!isObj(v)) return undefined;
+  const id = str(v["id"]);
+  const oclaId = str(v["oclaId"]);
+  const riboseSub = str(v["riboseSub"]) ?? str(v["ribose_id_sub"]);
+  if (!id || !oclaId || !riboseSub || v["role"] !== "org_admin") return undefined;
+  return {
+    id,
+    role: "org_admin",
+    oclaId,
+    riboseSub,
+    grantedAt: str(v["granted_at"]) ?? str(v["grantedAt"]) ?? "",
+    grantedBy: str(v["granted_by"]) ?? str(v["grantedBy"]),
+    source: (str(v["source"]) as RoleRecord["source"]) ?? "portal",
+  };
 }
 
 /**

@@ -11,6 +11,11 @@ import { githubAuthorizeUrl, exchangeGithubCode, fetchGithubUser, randomToken } 
 import { SESSION_COOKIE, CSRF_COOKIE, makeSessionCookie, readSessionCookie, makeStateCookie, readStateCookie, newCsrfToken } from "./portal/session";
 import { readAttributionToken, optionKey } from "./portal/attribution";
 import { readCompletionToken, isAgreeCommand } from "./portal/completion";
+import { signEnrollmentToken, readEnrollmentToken } from "./portal/enroll";
+import { loadSnapshot } from "./store/load";
+import { makeListRecords } from "./store/github-store";
+import { kernelEditions } from "./config";
+import { d1, hasPendingRequest, requestJoin, pendingRequests, decideRequest } from "./store/db";
 import { fetchPrHeadSha } from "./github/pulls";
 import { appendRecord } from "./store/write";
 import { readCookie, sessionOf, csrfOk, signerView, editionText, portalApi } from "./portal/helpers";
@@ -295,6 +300,287 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       const url = githubAuthorizeUrl(env.GITHUB_APP_CLIENT_ID!, `${portalBase}/callback/github`, state);
       c.header("Set-Cookie", `cla_flow=${await makeStateCookie(env.OIDC_CLIENT_SECRET!, { flow: "github", state, next: "/icla", tlogin: tokenData.login }, now())}${cookieOpts(600)}`);
       return c.redirect(url.toString());
+    });
+
+    // ---- OCLA self-service + PoC console (docs/design.md §4, issue #7) ----
+
+    const slugify = (name: string): string =>
+      name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const domainOf = (email: string | undefined): string | undefined =>
+      email?.includes("@") ? email.split("@")[1]!.toLowerCase() : undefined;
+    const rowKey = (l: string): string => l.trim().toLowerCase();
+
+    // role check: the session subject holds a live org_admin grant for this ocla
+    const orgAdminOf = async (oclaId: string, sub: string) => {
+      const { roles } = await loadSnapshot(
+        { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      return roles.some((r) => r.oclaId === oclaId && r.riboseSub === sub);
+    };
+
+    app.get("/sign-ocla", async (c) => {
+      const session = await ses(c);
+      if (!session) return c.json({ error: "sign in required" }, 401);
+      const csrf = readCookie(c.req.header("cookie"), CSRF_COOKIE) ?? newCsrfToken();
+      return c.html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Execute an Organization CLA</title></head><body>
+<h1>Organization CLA — v${GENERATED_CONFIG.legal.current.ocla}</h1>
+<p>Signing as <strong>@${session.login}</strong> (${session.email ?? "no email on account"}${session.emailVerified ? ", verified" : ", UNVERIFIED"})</p>
+<p><em>The signatory and the Point of Contact must hold a VERIFIED mailbox on a declared company domain (OCLA §4 puts signing authority on your representation; the on-domain mailbox is the app's integrity gate).</em></p>
+<pre id="ocla-text">${(editionText(GENERATED_CONFIG, "ocla", GENERATED_CONFIG.legal.current.ocla)!.text).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>
+<p>sha256: <code>${editionText(GENERATED_CONFIG, "ocla", GENERATED_CONFIG.legal.current.ocla)!.sha256}</code></p>
+<form method="post" action="/sign-ocla">
+<input type="hidden" name="csrf" value="${csrf}">
+<h2>Company</h2>
+<input name="org_name" placeholder="Legal name" required><br>
+<input name="org_address" placeholder="Address" required><br>
+<input name="org_country" placeholder="Country" required><br>
+<input name="domains" placeholder="email domains, comma-separated (e.g. mtg.example, mgt.example)" required><br>
+<h2>Signatory (you)</h2>
+<input name="signatory_name" placeholder="Your name" required><br>
+<input name="signatory_email" placeholder="Your corporate email (verified)" required><br>
+<input name="signatory_title" placeholder="Job title" required><br>
+<input name="signatory_github" placeholder="GitHub username (optional — N/A allowed)"><br>
+<h2>Point of Contact</h2>
+<input name="poc_name" placeholder="PoC name" required><br>
+<input name="poc_email" placeholder="PoC corporate email" required><br>
+<input name="poc_phone" placeholder="PoC phone"><br>
+<h2>Schedule A — designated employees (one per line: <code>github_login | Name | email | Job title</code>)</h2>
+<textarea name="schedule_a" rows="5" placeholder="tj-91 | Johannes Roth | johannes@mtg.example | Senior Software Developer"></textarea><br>
+<label><input type="checkbox" name="terms" required> I am authorized to bind this organization; we agree to the terms above (edition ${GENERATED_CONFIG.legal.current.ocla})</label><br>
+<label><input type="checkbox" name="past" value="yes"> This agreement includes ALL designated employees' previous contributions to Ribose projects</label><br>
+<button type="submit">Execute the OCLA</button>
+</form></body></html>`);
+    });
+
+    app.post("/sign-ocla", async (c) => {
+      const session = await ses(c);
+      if (!session) return c.json({ error: "sign in required" }, 401);
+      const form = await c.req.parseBody();
+      if (!csrfOk(c.req.header("cookie"), form["csrf"] as string)) return c.json({ error: "csrf mismatch" }, 403);
+      if (form["terms"] !== "on") return c.json({ error: "the OCLA terms consent is required" }, 400);
+      const pastIncluded = form["past"] === "yes";
+
+      const orgName = String(form["org_name"] ?? "").trim();
+      const domains = String(form["domains"] ?? "").split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
+      const signatoryEmail = String(form["signatory_email"] ?? "").trim();
+      const pocEmail = String(form["poc_email"] ?? "").trim();
+      const scheduleLines = String(form["schedule_a"] ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+      if (!orgName || domains.length === 0) return c.json({ error: "org name and at least one email domain are required" }, 400);
+
+      // the integrity gate: the signatory's VERIFIED mailbox on a declared domain
+      if (!session.emailVerified || !session.email || !domains.includes(domainOf(session.email) ?? "")) {
+        return c.json({ error: "the signatory must hold a VERIFIED mailbox on a declared company domain — verify such an email on your identity account first" }, 403);
+      }
+      if (!domains.includes(domainOf(signatoryEmail) ?? "") || !domains.includes(domainOf(pocEmail) ?? "")) {
+        return c.json({ error: "signatory and PoC emails must be on declared company domains" }, 400);
+      }
+
+      const api = portalApi(env, fetcher, now);
+      const covered: Array<{ githubLogin: string; githubId: number; email: string | null; name: string; title: string }> = [];
+      for (const line of scheduleLines) {
+        const [loginRaw, name = "", emailRaw = "", title = ""] = line.split("|").map((p) => p.trim());
+        if (!loginRaw) continue;
+        const res = await api.request(GENERATED_CONFIG.github.dataInstallationId, "GET", `/users/${encodeURIComponent(loginRaw)}`);
+        if (res.status !== 200) return c.json({ error: `Schedule A: GitHub username "${loginRaw}" does not resolve` }, 400);
+        const u = JSON.parse(res.body) as { login: string; id: number };
+        covered.push({ githubLogin: u.login.toLowerCase(), githubId: u.id, email: emailRaw || null, name, title });
+      }
+
+      const { snapshot } = await loadSnapshot(
+        { listRecords: makeListRecords(api, GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      const slug = slugify(orgName);
+      if (snapshot.oclas.some((o) => o.orgSlug === slug)) {
+        return c.json({ error: `an organization with slug "${slug}" already exists — duplicates are merged by staff` }, 400);
+      }
+
+      const oclaId = randomToken();
+      const edition = editionText(GENERATED_CONFIG, "ocla", GENERATED_CONFIG.legal.current.ocla)!;
+      await appendRecord({ api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "ocla", {
+        id: oclaId,
+        orgSlug: slug,
+        claEdition: { kind: "ocla", version: GENERATED_CONFIG.legal.current.ocla, textSha256: edition.sha256 },
+        covered: covered.map((r) => ({ githubLogin: r.githubLogin, email: r.email, githubId: r.githubId, name: r.name, title: r.title })),
+        signatory: { name: String(form["signatory_name"] ?? ""), email: signatoryEmail, title: String(form["signatory_title"] ?? ""), githubLogin: String(form["signatory_github"] ?? "") || null },
+        poc: { name: String(form["poc_name"] ?? ""), email: pocEmail, phone: String(form["poc_phone"] ?? "") || null },
+        domains,
+        pastContributionsIncluded: pastIncluded,
+        signedAt: new Date(now()).toISOString(),
+        source: "portal",
+        riboseIdSub: session.sub,
+      });
+      const enrollToken = await signEnrollmentToken(env.OIDC_CLIENT_SECRET!, oclaId, pocEmail, now());
+      return c.json({ signed: true, oclaId, orgSlug: slug, coveredCount: covered.length, pocEnrollmentUrl: `${portalBase}/enroll?t=${enrollToken}` });
+    });
+
+    // PoC enrollment: the invited email must be VERIFIED on the claimant's identity account
+    app.get("/enroll", async (c) => {
+      const session = await ses(c);
+      if (!session) return c.json({ error: "sign in required" }, 401);
+      const t = await readEnrollmentToken(env.OIDC_CLIENT_SECRET!, c.req.query("t"), now());
+      if (!t) return c.json({ error: "invalid or expired enrollment link" }, 400);
+      if (!session.emailVerified || (session.email ?? "").toLowerCase() !== t.email) {
+        return c.json({ error: `enrollment requires a VERIFIED identity account for ${t.email}` }, 403);
+      }
+      const api = portalApi(env, fetcher, now);
+      await appendRecord({ api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "role", {
+        id: randomToken(),
+        role: "org_admin",
+        oclaId: t.oclaId,
+        riboseSub: session.sub,
+        githubLogin: session.login,
+        granted_at: new Date(now()).toISOString(),
+        source: "enrollment",
+      });
+      return c.json({ enrolled: true, oclaId: t.oclaId });
+    });
+
+    // find your organization (session-gated)
+    app.get("/organizations", async (c) => {
+      if (!(await ses(c))) return c.json({ error: "sign in required" }, 401);
+      const { snapshot } = await loadSnapshot(
+        { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      return c.json({ organizations: snapshot.oclas.map((o) => ({ slug: o.orgSlug, edition: o.edition.version, coveredCount: o.covered.length })) });
+    });
+
+    app.post("/organizations/:slug/join", async (c) => {
+      const session = await ses(c);
+      if (!session) return c.json({ error: "sign in required" }, 401);
+      const db = d1(env);
+      if (!db) return c.json({ error: "join queue unavailable (D1 unconfigured)" }, 503);
+      const { snapshot } = await loadSnapshot(
+        { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      const ocla = snapshot.oclas.find((o) => o.orgSlug === c.req.param("slug"));
+      if (!ocla) return c.json({ error: "no such organization" }, 404);
+      if (ocla.edition.textSha256 !== kernelEditions(GENERATED_CONFIG).ocla.textSha256) {
+        return c.json({ error: "this organization's OCLA is stale (re-sign pending) — join requests are paused" }, 409);
+      }
+      if (await hasPendingRequest(db, ocla.id, session.login)) return c.json({ error: "you already have a pending request" }, 409);
+      await requestJoin(db, {
+        id: randomToken(),
+        oclaId: ocla.id,
+        login: session.login,
+        riboseSub: session.sub,
+        email: session.email ?? null,
+        requestedAt: new Date(now()).toISOString(),
+      });
+      return c.json({ requested: true, org: ocla.orgSlug, pocEmailOnFile: true });
+    });
+
+    const adminOf = async (c: { req: { param: (k: string) => string; header: (h: string) => string | undefined } }) => {
+      const session = await ses(c);
+      if (!session) return { error: "sign in required" as const, status: 401 as const };
+      const loaded = await loadSnapshot(
+        { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      const { snapshot, roles } = loaded;
+      const ocla = snapshot.oclas.find((o) => o.orgSlug === c.req.param("slug"));
+      if (!ocla) return { error: "no such organization" as const, status: 404 as const };
+      if (!roles.some((r) => r.oclaId === ocla.id && r.riboseSub === session.sub)) {
+        return { error: "org admin role required" as const, status: 403 as const };
+      }
+      return { session, snapshot, roles, mods: loaded.mods, ocla };
+    };
+
+    app.get("/admin-orgs", async (c) => {
+      const session = await ses(c);
+      if (!session) return c.json({ error: "sign in required" }, 401);
+      const { snapshot, roles } = await loadSnapshot(
+        { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      const mine = roles.filter((r) => r.riboseSub === session.sub).map((r) => r.oclaId);
+      return c.json({ organizations: snapshot.oclas.filter((o) => mine.includes(o.id)).map((o) => ({ slug: o.orgSlug })) });
+    });
+
+    app.get("/admin-orgs/:slug", async (c) => {
+      const auth = await adminOf(c);
+      if ("error" in auth) return c.json({ error: auth.error }, auth.status);
+      const db = d1(env);
+      const pending = db ? await pendingRequests(db, auth.ocla.id) : [];
+      return c.json({
+        org: { id: auth.ocla.id, slug: auth.ocla.orgSlug, edition: auth.ocla.edition },
+        effectiveScheduleA: auth.ocla.covered,
+        mods: auth.mods.filter((m) => m.oclaId === auth.ocla.id),
+        pendingJoinRequests: pending,
+      });
+    });
+
+    app.post("/admin-orgs/:slug/decide", async (c) => {
+      const auth = await adminOf(c);
+      if ("error" in auth) return c.json({ error: auth.error }, auth.status);
+      const db = d1(env);
+      if (!db) return c.json({ error: "join queue unavailable" }, 503);
+      const form = await c.req.parseBody();
+      if (!csrfOk(c.req.header("cookie"), form["csrf"] as string)) return c.json({ error: "csrf mismatch" }, 403);
+      const id = String(form["request_id"] ?? "");
+      const decision = form["decision"] === "approve" ? "approved" : form["decision"] === "reject" ? "rejected" : null;
+      if (!decision) return c.json({ error: "decision must be approve/reject" }, 400);
+
+      if (decision === "approved") {
+        const pending = await pendingRequests(db, auth.ocla.id);
+        const req = pending.find((r) => r.id === id);
+        if (!req) return c.json({ error: "no such pending request" }, 404);
+        // the LEGAL outcome: an append-only Schedule-A addition, actor recorded
+        await appendRecord({ api: portalApi(env, fetcher, now), installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "ocla-mod", {
+          id: randomToken(),
+          oclaId: auth.ocla.id,
+          add: [{ githubLogin: req.login, email: req.email, name: req.riboseSub, title: "joined via PoC approval" }],
+          recordedAt: new Date(now()).toISOString(),
+          actorRiboseSub: auth.session.sub,
+          reason: "join-request approval",
+        });
+      }
+      const ok = await decideRequest(db, id, decision, auth.session.sub, new Date(now()).toISOString());
+      return c.json({ decided: decision, applied: ok });
+    });
+
+    app.post("/admin-orgs/:slug/add", async (c) => {
+      const auth = await adminOf(c);
+      if ("error" in auth) return c.json({ error: auth.error }, auth.status);
+      const form = await c.req.parseBody();
+      if (!csrfOk(c.req.header("cookie"), form["csrf"] as string)) return c.json({ error: "csrf mismatch" }, 403);
+      const login = String(form["login"] ?? "").trim();
+      if (!login) return c.json({ error: "login required" }, 400);
+      const api = portalApi(env, fetcher, now);
+      const res = await api.request(GENERATED_CONFIG.github.dataInstallationId, "GET", `/users/${encodeURIComponent(login)}`);
+      if (res.status !== 200) return c.json({ error: `GitHub username "${login}" does not resolve` }, 400);
+      const u = JSON.parse(res.body) as { login: string; id: number };
+      await appendRecord({ api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "ocla-mod", {
+        id: randomToken(),
+        oclaId: auth.ocla.id,
+        add: [{ githubLogin: u.login.toLowerCase(), githubId: u.id, email: (form["email"] as string) || null, name: (form["name"] as string) || "", title: (form["title"] as string) || "" }],
+        recordedAt: new Date(now()).toISOString(),
+        actorRiboseSub: auth.session.sub,
+        reason: "direct add by PoC",
+      });
+      return c.json({ added: u.login.toLowerCase() });
+    });
+
+    app.post("/admin-orgs/:slug/remove", async (c) => {
+      const auth = await adminOf(c);
+      if ("error" in auth) return c.json({ error: auth.error }, auth.status);
+      const form = await c.req.parseBody();
+      if (!csrfOk(c.req.header("cookie"), form["csrf"] as string)) return c.json({ error: "csrf mismatch" }, 403);
+      const login = String(form["login"] ?? "").trim().toLowerCase();
+      if (!login) return c.json({ error: "login required" }, 400);
+      if (!auth.ocla.covered.some((row) => rowKey(row.githubLogin) === login)) return c.json({ error: "that login is not on the Schedule A" }, 404);
+      await appendRecord({ api: portalApi(env, fetcher, now), installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "ocla-mod", {
+        id: randomToken(),
+        oclaId: auth.ocla.id,
+        removeLogins: [login],
+        recordedAt: new Date(now()).toISOString(),
+        actorRiboseSub: auth.session.sub,
+        reason: "removed by PoC",
+      });
+      return c.json({ removed: login });
     });
 
     app.post("/signout", async (c) => {
