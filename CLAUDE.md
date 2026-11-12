@@ -45,6 +45,8 @@ Single file/case: `npm test -- test/foo.test.ts`, `npm test -- -t "name"`.
 7. **Least privilege** — the App never configures branch protection
    (administration: write is never requested); blocking is the required
    status check, configured by humans.
-8. **Git posture** — feature branches + rebase-merge PRs; never commit
-   to main; CI runs the gates and never deploys; deploys are deliberate
-   owner actions.
+8. **Git posture** — feature branches + rebase-merge PRs; **never stack
+   PRs: at most ONE pull request open at a time** (open the next only
+   after the previous merges); never commit to main; CI runs the gates
+   and never deploys; deploys are deliberate owner actions from the
+   instance repo. Owner runbook: `docs/runbook.md`.
