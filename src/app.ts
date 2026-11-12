@@ -12,6 +12,8 @@ import { SESSION_COOKIE, CSRF_COOKIE, makeSessionCookie, readSessionCookie, make
 import { readAttributionToken, optionKey } from "./portal/attribution";
 import { fetchPrHeadSha } from "./github/pulls";
 import { appendRecord } from "./store/write";
+import { readCookie, sessionOf, csrfOk, signerView, editionText, portalApi } from "./portal/helpers";
+import { TOKEN_CACHE, ETAG_CACHE } from "./cache";
 
 /**
  * The Hono app behind a thin worker entry (src/index.ts). Dependency
@@ -50,7 +52,6 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         tokenCache: TOKEN_CACHE,
         etagCache: ETAG_CACHE,
       });
-      // attribution tokens are verified by the portal (/attribute) — signed with the portal secret
       const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, staff: {}, attributionSecret: env.OIDC_CLIENT_SECRET };
 
       try {
@@ -152,11 +153,84 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       return c.redirect(`${portalBase}/agreements`);
     });
 
-    // Content-assertable identity surface (full page lands with #6).
+    // ---- My agreements + ICLA signing (docs/design.md §4) ----
+    const ses = async (c: { req: { header: (h: string) => string | undefined } }) => sessionOf(env, c.req.header("cookie"), now());
+
     app.get("/agreements", async (c) => {
-      const session = await readSessionCookie(env.OIDC_CLIENT_SECRET!, c.req.header("cookie")?.split(";").find((x) => x.trim().startsWith(`${SESSION_COOKIE}=`))?.split("=").slice(1).join("="), now());
+      const session = await ses(c);
       if (!session) return c.json({ error: "sign in required" }, 401);
-      return c.json({ bound: { ribose_id_sub: session.sub, github_login: session.login, github_id: session.githubId }, email: session.email ?? null, email_verified: session.emailVerified === true });
+      const view = await signerView(env, fetcher, now, session.login);
+      return c.json({
+        bound: { ribose_id_sub: session.sub, github_login: session.login, github_id: session.githubId },
+        email: session.email ?? null,
+        email_verified: session.emailVerified === true,
+        ...view,
+      });
+    });
+
+    // The exact text of any edition ever deployed, hash-verified before
+    // serving, with the hash displayed (docs/design.md §3.10).
+    app.get("/agreements/text/:kind/:version", async (c) => {
+      if (!(await ses(c))) return c.json({ error: "sign in required" }, 401);
+      const kind = c.req.param("kind");
+      if (kind !== "icla" && kind !== "ocla") return c.json({ error: "unknown kind" }, 404);
+      const e = editionText(GENERATED_CONFIG, kind, c.req.param("version"));
+      if (!e) return c.json({ error: "no such edition" }, 404);
+      return c.json({ kind, version: c.req.param("version"), sha256: e.sha256, text: e.text });
+    });
+
+    const iclaEdition = editionText(GENERATED_CONFIG, "icla", GENERATED_CONFIG.legal.current.icla)!;
+
+    app.get("/icla", async (c) => {
+      const session = await ses(c);
+      if (!session) return c.json({ error: "sign in required" }, 401);
+      const csrf = readCookie(c.req.header("cookie"), CSRF_COOKIE) ?? newCsrfToken();
+      const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Sign the Individual CLA</title></head>
+<body>
+<h1>Individual Contributor License Agreement — v${GENERATED_CONFIG.legal.current.icla}</h1>
+<p>Signing as <strong>@${session.login}</strong>${session.email ? ` (${session.email}${session.emailVerified ? ", verified" : ", unverified"})` : ""}</p>
+<pre id="cla-text">${iclaEdition.text.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>
+<p>sha256: <code>${iclaEdition.sha256}</code></p>
+<form method="post" action="/icla/sign">
+<input type="hidden" name="csrf" value="${csrf}">
+<label><input type="checkbox" name="terms" required> I agree to the terms above (edition ${GENERATED_CONFIG.legal.current.icla}, sha256 ${iclaEdition.sha256})</label><br>
+<label><input type="checkbox" name="past" value="yes" required> This agreement includes ALL my previous contributions to Ribose projects</label><br>
+<button type="submit">Sign</button>
+</form>
+</body></html>`;
+      return c.html(html);
+    });
+
+    app.post("/icla/sign", async (c) => {
+      const session = await ses(c);
+      if (!session) return c.json({ error: "sign in required" }, 401);
+      const form = await c.req.parseBody();
+      if (!csrfOk(c.req.header("cookie"), form["csrf"] as string)) return c.json({ error: "csrf mismatch" }, 403);
+      if (form["terms"] !== "on") return c.json({ error: "the CLA terms consent is required" }, 400);
+      const pastIncluded = form["past"] === "yes";
+      if (!pastIncluded && form["past_declined"] !== "yes") return c.json({ error: "the past-contributions election is required (affirm, or decline explicitly)" }, 400);
+
+      const api = portalApi(env, fetcher, now);
+      const { path, commitSha } = await appendRecord(
+        { api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now },
+        "icla",
+        {
+          ribose_id_sub: session.sub,
+          github_login: session.login,
+          github_id: session.githubId,
+          name: (form["name"] as string) ?? "",
+          email: (form["email"] as string) || session.email || "",
+          email_verified: session.emailVerified === true && ((form["email"] as string) || session.email) === session.email,
+          alt_email: (form["alt_email"] as string) || null,
+          country: (form["country"] as string) ?? "",
+          claEdition: { kind: "icla", version: GENERATED_CONFIG.legal.current.icla, textSha256: iclaEdition.sha256 },
+          signed_at: new Date(now()).toISOString(),
+          source: "portal",
+          past_contributions_included: pastIncluded,
+        },
+      );
+      return c.json({ signed: true, record: path, commit: commitSha, past_contributions_included: pastIncluded });
     });
 
     // The must-specify election surface (docs/design.md §3.11): the bot's
@@ -203,26 +277,4 @@ export { resetOidcCaches };
 function reposFromInstallation(payload: Record<string, unknown>): string[] {
   const repos = payload["repositories"];
   return Array.isArray(repos) ? repos.map((r) => (r as Record<string, unknown>)["full_name"] as string).filter(Boolean) : [];
-}
-
-// The instance/KV-backed caches land with the instance repo (#12 owner
-// half); until then these are per-isolate memory caches (created once,
-// shared across requests in the isolate).
-const TOKEN_CACHE = memoryCache();
-const ETAG_CACHE = memoryEtagCache();
-
-function memoryCache(): { get: (k: string) => string | undefined; put: (k: string, v: string, ttl: number) => void } {
-  const m = new Map<string, { v: string; until: number }>();
-  return {
-    get: (k) => {
-      const hit = m.get(k);
-      if (hit && hit.until > Date.now()) return hit.v;
-      return undefined;
-    },
-    put: (k, v, ttl) => m.set(k, { v, until: Date.now() + ttl * 1000 }),
-  };
-}
-function memoryEtagCache(): { get: (k: string) => { etag: string; body: string } | undefined; put: (k: string, etag: string, body: string) => void } {
-  const m = new Map<string, { etag: string; body: string }>();
-  return { get: (k) => m.get(k), put: (k, etag, body) => m.set(k, { etag, body }) };
 }
