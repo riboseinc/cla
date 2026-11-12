@@ -29,7 +29,7 @@ Sequence the stages; do not skip the backfill before the teeth (stage 5).
 
 1. Create the private repos under `ribosei`:
    - `cla-instance` (config + `legal/icla/1.0.md`, `legal/ocla/1.0.md` — the counsel texts)
-   - `cla-data` (records; branch protection: app + staff write only, **no force-push, linear history**)
+   - `cla-data` (records; branch protection: app + staff write only, **no force-push, linear history**) — **CREATED 2026-11-12** with `cla-instance` + `cla-offline`; the MTG AG scan + first backfill record are committed. **Plan gap: branch protection on private repos needs GitHub Pro/Team+** — until an upgrade, append-only rides on convention + the audit trail; revisit after upgrade.
    - `cla-offline` (evidence scans, checksummed)
 2. `wrangler d1 create cla-ephemeral`; apply migrations (`d1 migrations apply DB --remote`); KV for caches if desired.
 3. Worker `ribose-cla` secrets: `APP_PRIVATE_KEY`, `WEBHOOK_SECRET`, `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `SERVICE_TOKEN`, `OPS_TOKEN`, `MAIL_PROVIDER_URL`, `MAIL_PROVIDER_KEY`.
