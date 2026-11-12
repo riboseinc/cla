@@ -92,7 +92,15 @@ export function makeFixture(): Fixture {
       return json(200, { head: { sha: "abc123" } });
     }
     if (u.pathname === "/repos/example-org/cla-data/git/trees/HEAD") {
-      return json(200, { tree: [{ path: "ocla/2026/03/mtg.json", type: "blob" }, { path: "icla/2026/11/tj.json", type: "blob" }, { path: "README.md", type: "blob" }] });
+      return json(200, { tree: [{ path: "ocla/2026/03/mtg.json", type: "blob" }, { path: "icla/2026/11/tj.json", type: "blob" }, { path: "role/2026/11/poc.json", type: "blob" }, { path: "README.md", type: "blob" }] });
+    }
+    if (u.pathname === "/repos/example-org/cla-data/contents/role/2026/11/poc.json") {
+      return json(200, {
+        content: Buffer.from(
+          JSON.stringify({ id: "role-poc-1", role: "org_admin", oclaId: "ocla-mtg", riboseSub: "poc-sub", githubLogin: "falko-strenzke", grantedAt: "2026-11-12T00:00:00Z", source: "staff" }),
+        ).toString("base64"),
+        encoding: "base64",
+      });
     }
     if (u.pathname === "/repos/example-org/cla-data/contents/ocla/2026/03/mtg.json") {
       return json(200, { content: Buffer.from(JSON.stringify(DATA_OCLA())).toString("base64"), encoding: "base64" });

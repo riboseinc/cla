@@ -1,6 +1,6 @@
 import type { Editions, IclaRecord, OclaRecord, PrVerdict, StoreSnapshot } from "@riboseinc/cla-kernel";
 import { evaluate } from "@riboseinc/cla-kernel";
-import { foldScheduleA, parseIcla, parseOcla, parseOclaMod, parseRevocation, parseAttribution, type OclaModRecord, type AttributionRecord } from "./records";
+import { foldScheduleA, parseIcla, parseOcla, parseOclaMod, parseRevocation, parseAttribution, parseRole, type OclaModRecord, type RoleRecord } from "./records";
 
 /**
  * The store leg: the data repo's record tree -> a kernel snapshot.
@@ -23,6 +23,10 @@ export type LoadedSnapshot = {
   snapshot: StoreSnapshot;
   /** Records that failed validation — fail-visible, never silent. */
   rejected: { path: string; reason: string }[];
+  /** Schedule-A modifications (the console's history view). */
+  mods: OclaModRecord[];
+  /** org_admin role records (portal authorization). */
+  roles: RoleRecord[];
 };
 
 export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise<LoadedSnapshot> {
@@ -31,6 +35,8 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
   const iclas: IclaRecord[] = [];
   const oclas: OclaRecord[] = [];
   const modsByOcla = new Map<string, OclaModRecord[]>();
+  const mods: OclaModRecord[] = [];
+  const roles: RoleRecord[] = [];
   const revokedIds: string[] = [];
   const attributions: NonNullable<StoreSnapshot["attributions"]> = [];
   const rejected: { path: string; reason: string }[] = [];
@@ -56,7 +62,11 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
         const list = modsByOcla.get(r.oclaId) ?? [];
         list.push(r);
         modsByOcla.set(r.oclaId, list);
+        mods.push(r);
       } else rejected.push({ path, reason: "invalid ocla-mod" });
+    } else if (path.startsWith("role/")) {
+      const r = parseRole(parsed);
+      r ? roles.push(r) : rejected.push({ path, reason: "invalid role" });
     } else if (path.startsWith("revocation/")) {
       const target = parseRevocation(parsed);
       target ? revokedIds.push(target) : rejected.push({ path, reason: "invalid revocation" });
@@ -85,6 +95,8 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
       attributions,
     },
     rejected,
+    mods,
+    roles: roles.filter((r) => !revoked.has(r.id)),
   };
 }
 

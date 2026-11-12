@@ -17,6 +17,8 @@ export type Env = {
   OPS_TOKEN?: string;
   /** Identity-service subject-roles lookup token (issue #10). */
   SERVICE_TOKEN?: string;
+  /** D1 (join-request queue + ephemeral state). */
+  DB?: D1Database;
 
   [key: string]: unknown;
 };
