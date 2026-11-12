@@ -5,11 +5,12 @@ import type { FetchLike } from "./github/api";
 import { GENERATED_CONFIG } from "./generated/config";
 import { parseEvent, verifyWebhookSignature, installationId, repoFullName } from "./github/webhook";
 import { GithubApi } from "./github/api";
-import { evaluatePullRequest, closeMergedPullRequest, preRegisterRepos, type EnforcementDeps } from "./enforcement/handler";
+import { evaluatePullRequest, closeMergedPullRequest, handleAgreeCommand, preRegisterRepos, type EnforcementDeps } from "./enforcement/handler";
 import { discover, authorizationRequest, exchangeCode, verifyIdToken, resetOidcCaches } from "./portal/oidc";
 import { githubAuthorizeUrl, exchangeGithubCode, fetchGithubUser, randomToken } from "./portal/github-oauth";
 import { SESSION_COOKIE, CSRF_COOKIE, makeSessionCookie, readSessionCookie, makeStateCookie, readStateCookie, newCsrfToken } from "./portal/session";
 import { readAttributionToken, optionKey } from "./portal/attribution";
+import { readCompletionToken, isAgreeCommand } from "./portal/completion";
 import { fetchPrHeadSha } from "./github/pulls";
 import { appendRecord } from "./store/write";
 import { readCookie, sessionOf, csrfOk, signerView, editionText, portalApi } from "./portal/helpers";
@@ -78,6 +79,25 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           }
           const r = await closeMergedPullRequest(deps, { installationId: inst, repoFullName: repo, prNumber: number });
           return c.json({ ok: true, closing: r.posted });
+        }
+        if (evt.event === "issue_comment" && evt.action === "created") {
+          const comment = evt.payload["comment"] as Record<string, unknown> | undefined;
+          const issue = evt.payload["issue"] as Record<string, unknown> | undefined;
+          const number = evt.payload["number"] ?? issue?.["number"];
+          const repo = repoFullName(evt.payload);
+          const inst = installationId(evt.payload);
+          const bodyText = typeof comment?.["body"] === "string" ? (comment["body"] as string) : "";
+          const commenter = comment?.["user"] && typeof comment["user"] === "object" ? ((comment["user"] as Record<string, unknown>)["login"] as string | undefined) : undefined;
+          const isPr = issue?.["pull_request"] !== undefined;
+          const prAuthor = issue?.["user"] && typeof issue["user"] === "object" ? ((issue["user"] as Record<string, unknown>)["login"] as string | undefined) : undefined;
+          if (!comment || !issue || !repo || !inst || typeof number !== "number" || !commenter || !prAuthor) {
+            return c.json({ error: "payload missing expected fields" }, 400);
+          }
+          if (!isPr || commenter.endsWith("[bot]") || !isAgreeCommand(bodyText)) {
+            return c.json({ ok: true, ignored: "not an agree command on a PR" });
+          }
+          const r = await handleAgreeCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, prAuthor });
+          return c.json({ ok: true, replied: r.replied, reason: r.reason });
         }
         if ((evt.event === "installation_repositories" && evt.action === "added") || (evt.event === "installation" && evt.action === "created")) {
           const inst = installationId(evt.payload);
@@ -150,7 +170,11 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       c.header("Set-Cookie", `${SESSION_COOKIE}=${await makeSessionCookie(env.OIDC_CLIENT_SECRET!, { sub: claims.sub, login: flow["ghLogin"], githubId: Number(flow["ghId"]), email: typeof claims.email === "string" ? claims.email : undefined, emailVerified: claims.email_verified === true }, now())}${cookieOpts(8 * 3600)}`);
       c.header("Set-Cookie", `${CSRF_COOKIE}=${csrf}${cookieOpts(8 * 3600)}`, { append: true });
       c.header("Set-Cookie", `cla_flow=; Path=/; HttpOnly; Max-Age=0`, { append: true });
-      return c.redirect(`${portalBase}/agreements`);
+      // a completion flow insists the proven handle is the invited login
+      if (flow["tlogin"] && flow["tlogin"] !== flow["ghLogin"]) {
+        return c.json({ error: "only the committer may complete this signature" }, 403);
+      }
+      return c.redirect(`${portalBase}${flow["next"] ?? "/agreements"}`);
     });
 
     // ---- My agreements + ICLA signing (docs/design.md §4) ----
@@ -255,6 +279,22 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, staff: {}, attributionSecret: env.OIDC_CLIENT_SECRET };
       await evaluatePullRequest(deps, { installationId: tokenData.installationId, repoFullName: tokenData.repo, prNumber: tokenData.pr, headSha: sha });
       return c.json({ recorded: true, agreement: chosen });
+    });
+
+    // The comment-command completion surface (docs/design.md §3.12): the
+    // bot's signed link proves the handle; if the browser session doesn't
+    // match, the user re-proves it through the dual flow, then lands on
+    // the ICLA form.
+    app.get("/icla/complete", async (c) => {
+      const tokenData = await readCompletionToken(env.OIDC_CLIENT_SECRET!, c.req.query("t"), now());
+      if (!tokenData) return c.json({ error: "invalid or expired completion link" }, 400);
+      const session = await ses(c);
+      if (session && session.login === tokenData.login) return c.redirect(`${portalBase}/icla`);
+      // re-prove the handle through the dual flow, then land on /icla
+      const state = randomToken();
+      const url = githubAuthorizeUrl(env.GITHUB_APP_CLIENT_ID!, `${portalBase}/callback/github`, state);
+      c.header("Set-Cookie", `cla_flow=${await makeStateCookie(env.OIDC_CLIENT_SECRET!, { flow: "github", state, next: "/icla", tlogin: tokenData.login }, now())}${cookieOpts(600)}`);
+      return c.redirect(url.toString());
     });
 
     app.post("/signout", async (c) => {

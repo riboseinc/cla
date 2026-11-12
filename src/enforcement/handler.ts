@@ -8,6 +8,7 @@ import type { GithubApi } from "../github/api";
 import { makeListRecords } from "../store/github-store";
 import { checkRunBody, createCheckRun, commentBody, upsertComment, postClosingComment, closingComment, preRegisterCheck, CHECK_NAME } from "./checks";
 import { signAttributionToken, optionKey } from "../portal/attribution";
+import { signCompletionToken, isAgreeCommand } from "../portal/completion";
 
 /**
  * The pull_request orchestration (docs/design.md §5). Every store or
@@ -102,6 +103,54 @@ export async function closeMergedPullRequest(
   return { posted: true };
 }
 
+/** issue_comment.created — the `@ribose-cla agree` entry point (docs/design.md §3.12).
+ *  Only PR authors/committers get a reply; everyone else is silently ignored. */
+export async function handleAgreeCommand(
+  deps: EnforcementDeps,
+  args: { installationId: number; repoFullName: string; prNumber: number; commenter: string; prAuthor: string },
+): Promise<{ replied: boolean; reason?: string }> {
+  const full = args.repoFullName;
+  const commenter = args.commenter.toLowerCase();
+
+  const { committers } = await fetchPrCommitters(deps.api, args.installationId, full, args.prNumber);
+  const logins = new Set<string>(committers.flatMap((c) => (c.login ? [c.login.toLowerCase()] : [])));
+  logins.add(args.prAuthor.toLowerCase());
+  if (!logins.has(commenter)) return { replied: false, reason: "not a committer (ignored)" };
+
+  const editions = kernelEditions(deps.config);
+  const { snapshot } = await loadSnapshot(
+    { listRecords: makeListRecords(deps.api, deps.config.github.dataInstallationId, deps.config.github.dataRepo) },
+    editions,
+  );
+  const currentIcla = snapshot.iclas.find((r) => r.githubLogin.toLowerCase() === commenter && r.edition.textSha256 === editions.icla.textSha256);
+  if (currentIcla) {
+    await postBotReply(deps.api, args.installationId, full, args.prNumber, `@${commenter} you already signed the Individual CLA v${currentIcla.edition.version} — you're covered.`);
+    return { replied: true, reason: "already-signed" };
+  }
+
+  if (!deps.attributionSecret) return { replied: false, reason: "portal unconfigured (fail-closed)" };
+  const token = await signCompletionToken(deps.attributionSecret, { repo: full, pr: args.prNumber, login: commenter }, Date.now());
+  const portalBase = `https://${deps.config.instance.portalHost}`;
+  await postBotReply(
+    deps.api,
+    args.installationId,
+    full,
+    args.prNumber,
+    [
+      `@${commenter} — almost done. Open this link to confirm your signature of the **Individual CLA v${deps.config.legal.current.icla}** (it states the full terms, and includes all your previous contributions unless you decline):`,
+      ``,
+      `${portalBase}/icla/complete?t=${token}`,
+      ``,
+      `_Your GitHub handle is already verified by this command; the link completes the signature record with your identity account._`,
+    ].join("\n"),
+  );
+  return { replied: true, reason: "completion-link sent" };
+}
+
+async function postBotReply(api: GithubApi, installationId: number, repoFullName: string, prNumber: number, body: string): Promise<void> {
+  const res = await api.request(installationId, "POST", `/repos/${repoFullName}/issues/${prNumber}/comments`, { body: { body } });
+  if (res.status !== 201) throw new Error(`bot reply failed: ${res.status}`);
+}
 /** installation_repositories.added / installation.created — pre-register the check name per repo. */
 export async function preRegisterRepos(deps: EnforcementDeps, installationId: number, repos: string[]): Promise<string[]> {
   const done: string[] = [];
