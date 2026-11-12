@@ -1,0 +1,179 @@
+import type { ClaEdition } from "./index";
+
+/**
+ * The pure CLA evaluation kernel (docs/design.md §5). Zero I/O: every
+ * input is plain data, every output is a plain verdict. The webhook
+ * leg resolves staff roles and store snapshots into the shapes below;
+ * this module owns the LEGAL logic and nothing else.
+ */
+
+// ---- inputs ----
+
+export type Committer = {
+  /** GitHub login as it appeared on the commit (case normalized internally). */
+  login: string | null;
+  /** git author email — the fallback matcher for unlinked commits. */
+  email?: string | null;
+  /** Bot accounts are excluded upstream; the kernel defends anyway. */
+  isBot?: boolean;
+};
+
+export type PrInput = {
+  context: { org: string; repo: string };
+  committers: Committer[];
+};
+
+export type Editions = { icla: ClaEdition; ocla: ClaEdition };
+
+export type Config = {
+  coverage: {
+    allowlist: { global: string[]; perOrg: Record<string, string[]> };
+    /** (org, role) pairs that mean employment-covered; everyone else — including contractors — signs or joins. */
+    staffRoles: Array<{ org: string; role: string }>;
+  };
+};
+
+export type StaffMap = Record<string, { org: string; role: string }>;
+
+export type IclaRecord = {
+  id: string;
+  githubLogin: string;
+  email?: string | null;
+  edition: ClaEdition;
+};
+
+export type OclaCoveredRow = {
+  githubLogin: string;
+  email?: string | null;
+};
+
+export type OclaRecord = {
+  id: string;
+  orgSlug: string;
+  /** The EFFECTIVE Schedule A: original rows + modifications already folded in order (store leg, issue #3). */
+  covered: OclaCoveredRow[];
+  edition: ClaEdition;
+};
+
+export type StoreSnapshot = {
+  iclas: IclaRecord[];
+  oclas: OclaRecord[];
+  /** Record ids killed by revocation/voidance — coverage reads as if they never existed. */
+  revokedIds: string[];
+};
+
+// ---- outputs ----
+
+export type AgreementRef =
+  | { kind: "icla"; version: string }
+  | { kind: "ocla"; version: string; oclaId: string; orgSlug: string }
+  | { kind: "staff"; org: string; role: string };
+
+export type CommitterVerdict =
+  | { login: string | null; status: "covered"; path: "allowlist" | "icla" | "ocla" | "staff"; agreement?: AgreementRef; matchedBy: "login" | "email" }
+  | { login: string | null; status: "must-specify"; options: AgreementRef[]; matchedBy: "login" | "email" }
+  | { login: string | null; status: "missing" };
+
+export type PrVerdict = {
+  /** "pass": every committer covered or must-specify; "fail": at least one missing. */
+  verdict: "pass" | "fail";
+  committers: CommitterVerdict[];
+  missing: string[];
+  mustSpecify: Record<string, AgreementRef[]>;
+};
+
+// ---- evaluation ----
+
+const normalize = (s: string): string => s.trim().toLowerCase();
+
+const sameEdition = (a: ClaEdition, b: ClaEdition): boolean =>
+  a.textSha256 === b.textSha256;
+
+const isLive = (r: { id: string; edition: ClaEdition }, current: ClaEdition, revoked: Set<string>): boolean =>
+  !revoked.has(r.id) && sameEdition(r.edition, current);
+
+const iclaRef = (r: IclaRecord): AgreementRef => ({ kind: "icla", version: r.edition.version });
+const oclaRef = (r: OclaRecord): AgreementRef => ({
+  kind: "ocla",
+  version: r.edition.version,
+  oclaId: r.id,
+  orgSlug: r.orgSlug,
+});
+
+/** Collect every applicable human-path coverage for one identity string. */
+function collectPaths(
+  key: "login" | "email",
+  value: string,
+  snap: StoreSnapshot,
+  cfg: Config,
+  editions: Editions,
+  staff: StaffMap,
+  revoked: Set<string>,
+): { path: "icla" | "ocla" | "staff"; agreement?: AgreementRef }[] {
+  const v = normalize(value);
+  const out: { path: "icla" | "ocla" | "staff"; agreement?: AgreementRef }[] = [];
+
+  for (const r of snap.iclas) {
+    if (!isLive(r, editions.icla, revoked)) continue;
+    const hit = key === "login" ? normalize(r.githubLogin) === v : normalize(r.email ?? "") === v;
+    if (hit) out.push({ path: "icla", agreement: iclaRef(r) });
+  }
+  for (const o of snap.oclas) {
+    if (!isLive(o, editions.ocla, revoked)) continue;
+    const hit = o.covered.some((row) =>
+      key === "login" ? normalize(row.githubLogin) === v : normalize(row.email ?? "") === v,
+    );
+    if (hit) out.push({ path: "ocla", agreement: oclaRef(o) });
+  }
+  const sm = key === "login" ? staff[v] : undefined;
+  if (sm && cfg.coverage.staffRoles.some((sr) => sr.org === sm.org && sr.role === sm.role)) {
+    out.push({ path: "staff", agreement: { kind: "staff", org: sm.org, role: sm.role } });
+  }
+  return out;
+}
+
+export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions: Editions, staff: StaffMap): PrVerdict {
+  const revoked = new Set(snap.revokedIds);
+  const committers: CommitterVerdict[] = [];
+  const missing: string[] = [];
+  const mustSpecify: Record<string, AgreementRef[]> = {};
+
+  for (const c of pr.committers) {
+    if (c.isBot) continue;
+
+    const allowlisted =
+      (c.login && (cfg.coverage.allowlist.global.map(normalize).includes(normalize(c.login)) ||
+        (cfg.coverage.allowlist.perOrg[pr.context.org] ?? []).map(normalize).includes(normalize(c.login)))) ?? false;
+    if (allowlisted) {
+      committers.push({ login: c.login, status: "covered", path: "allowlist", matchedBy: "login" });
+      continue;
+    }
+
+    const paths: { path: "icla" | "ocla" | "staff"; agreement?: AgreementRef }[] = [];
+    let matchedBy: "login" | "email" = "login";
+    let resolvedLogin: string | null = c.login;
+
+    if (c.login) {
+      paths.push(...collectPaths("login", c.login, snap, cfg, editions, staff, revoked));
+    }
+    if (paths.length === 0 && c.email) {
+      paths.push(...collectPaths("email", c.email, snap, cfg, editions, staff, revoked));
+      matchedBy = "email";
+      resolvedLogin = c.login;
+    }
+
+    if (paths.length === 1) {
+      const p = paths[0]!;
+      committers.push({ login: resolvedLogin, status: "covered", path: p.path, agreement: p.agreement, matchedBy });
+    } else if (paths.length > 1) {
+      const options = paths.map((p) => p.agreement!).filter(Boolean);
+      committers.push({ login: resolvedLogin, status: "must-specify", options, matchedBy });
+      if (resolvedLogin) mustSpecify[resolvedLogin] = options;
+    } else {
+      committers.push({ login: resolvedLogin, status: "missing" });
+      if (resolvedLogin) missing.push(resolvedLogin);
+    }
+  }
+
+  return { verdict: missing.length > 0 ? "fail" : "pass", committers, missing, mustSpecify };
+}
