@@ -7,7 +7,7 @@ import type { GithubApi } from "../github/api";
  * nothing against the rate limit), then blob reads per record file.
  */
 
-const RECORD_NAMESPACES = ["icla/", "ocla/", "ocla-mod/", "revocation/", "attribution/", "role/"];
+const RECORD_NAMESPACES = ["icla/", "ocla/", "ocla-mod/", "revocation/", "attribution/", "role/", "link/"];
 
 export function makeListRecords(api: GithubApi, installationId: number, dataRepo: string): StoreDeps["listRecords"] {
   return async (): Promise<RecordLister> => {

@@ -22,3 +22,11 @@ export const ETAG_CACHE = (() => {
     put: (k: string, etag: string, body: string) => m.set(k, { etag, body }),
   };
 })();
+
+/** Identity-role lookups cache 1h per subject; tests clear between legs. */
+const STAFF_MAP = new Map<string, { org: string; role: string }>();
+export const STAFF_CACHE = {
+  get: (k: string) => STAFF_MAP.get(k),
+  put: (k: string, v: { org: string; role: string }) => STAFF_MAP.set(k, v),
+  clear: () => STAFF_MAP.clear(),
+};
