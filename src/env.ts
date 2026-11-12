@@ -4,7 +4,8 @@
  * (docs/design.md §9).
  */
 export type Env = {
-  /** GitHub App private key (PEM) — unset closes all GitHub legs. */
+  /** GitHub App id (JWT `iss` claim) + private key (PEM) — unset closes all GitHub legs. */
+  GITHUB_APP_ID?: string;
   APP_PRIVATE_KEY?: string;
   /** GitHub webhook secret — unset closes the webhook surface. */
   WEBHOOK_SECRET?: string;
