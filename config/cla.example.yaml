@@ -1,0 +1,46 @@
+# EXAMPLE instance config — keeps the gates green in CI. The real
+# instance lives in the PRIVATE instance repo (values never compiled-in
+# by hand; scripts/gen.ts compiles this into src/generated/config.ts).
+
+instance:
+  name: Example
+  portal_host: cla.example.org
+
+identity:
+  issuer: https://id.example.org
+  client_id: example-oidc-client
+  service_token_ref: SERVICE_TOKEN
+
+legal:
+  editions:
+    icla:
+      current: "1.0"
+      files:
+        "1.0": legal/icla/1.0.md
+    ocla:
+      current: "1.0"
+      files:
+        "1.0": legal/ocla/1.0.md
+
+github:
+  app_slug: example-cla
+  data_repo: example-org/cla-data
+  offline_repo: example-org/cla-offline
+  data_installation_id: 1
+
+coverage:
+  staff_roles:
+    - { org: example-org, role: staff }
+  allowlist:
+    global:
+      - "dependabot[bot]"
+      - "github-actions[bot]"
+    per_org:
+      example-org:
+        - example-ci
+  repos_without_cla: []
+  comment_signing:
+    automatic: false
+  notify:
+    digest_threshold: 10
+    from: notify.example.org

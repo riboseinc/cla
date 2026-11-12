@@ -15,17 +15,20 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "build": "wrangler deploy --dry-run --config wrangler.example.toml",
-    "dev": "wrangler dev --config wrangler.example.toml"
+    "gen": "tsx scripts/gen.ts",
+    "typecheck": "npm run gen && tsc --noEmit",
+    "test": "npm run gen && vitest run",
+    "build": "npm run gen && wrangler deploy --dry-run --config wrangler.example.toml",
+    "dev": "npm run gen && wrangler dev --config wrangler.example.toml"
   },
   "dependencies": {
-    "hono": "^4.13.0"
+    "hono": "^4.13.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260826.1",
     "@types/node": "^24.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.2",
     "vitest": "^4.1.11",
     "wrangler": "^4.126.0"
