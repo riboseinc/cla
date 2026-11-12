@@ -3,5 +3,7 @@ dist/
 .wrangler/
 .dev.vars
 instances/
+src/generated/
+config/cla.yaml
 *.log
 .DS_Store
