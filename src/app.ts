@@ -15,7 +15,9 @@ import { signEnrollmentToken, readEnrollmentToken } from "./portal/enroll";
 import { loadSnapshot } from "./store/load";
 import { makeListRecords } from "./store/github-store";
 import { kernelEditions } from "./config";
-import { d1, hasPendingRequest, requestJoin, pendingRequests, decideRequest } from "./store/db";
+import { d1, hasPendingRequest, requestJoin, pendingRequests, decideRequest, audit } from "./store/db";
+import { verifyEvidence } from "./store/evidence";
+import { sha256Hex } from "./portal/oidc";
 import { fetchPrHeadSha } from "./github/pulls";
 import { appendRecord } from "./store/write";
 import { readCookie, sessionOf, csrfOk, signerView, editionText, portalApi } from "./portal/helpers";
@@ -591,6 +593,165 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       c.header("Set-Cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; Max-Age=0`);
       c.header("Set-Cookie", `${CSRF_COOKIE}=; Path=/; HttpOnly; Max-Age=0`);
       return c.json({ ok: true });
+    });
+  }
+
+  // ---- Staff console (fail-closed: no ops token -> does not exist) ----
+  // Remedies and legacy import ONLY — onboarding is self-service; the
+  // console never gates it. Every action audits to D1.
+  if (env.OPS_TOKEN) {
+    const opsGuard = (c: { req: { header: (h: string) => string | undefined } }) => c.req.header("authorization") === `Bearer ${env.OPS_TOKEN}`;
+    const ops = async (c: { req: { header: (h: string) => string | undefined } }, action: string, target: string, detail?: string) =>
+      audit(d1(env), { actor: "ops", action, target, detail, at: new Date(now()).toISOString(), id: randomToken() });
+    const opsForm = async (c: { req: { json: () => Promise<unknown>; parseBody: () => Promise<Record<string, unknown>>; header: (h: string) => string | undefined } }) => {
+      const ct = c.req.header("content-type") ?? "";
+      return ct.includes("json") ? await c.req.json().catch(() => ({})) : Object.fromEntries((await c.req.parseBody().catch(() => ({}))) as never);
+    };
+
+    app.post("/admin/void", async (c) => {
+      if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
+      const body = (await opsForm(c)) as Record<string, unknown>;
+      const targetId = String(body["target_id"] ?? "");
+      const reason = String(body["reason"] ?? "");
+      if (!targetId || !reason) return c.json({ error: "target_id and reason are required" }, 400);
+      const api = portalApi(env, fetcher, now);
+      const { path } = await appendRecord({ api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "revocation", {
+        id: randomToken(),
+        target: { id: targetId },
+        reason,
+        by: "ops",
+        at: new Date(now()).toISOString(),
+      });
+      await ops(c, "void", targetId, reason);
+      return c.json({ voided: targetId, record: path });
+    });
+
+    app.post("/admin/backfill-ocla", async (c) => {
+      if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
+      const body = (await opsForm(c)) as Record<string, unknown>;
+      const evidence = body["evidence"] as { path?: string; sha256?: string } | undefined;
+      if (!evidence?.path || !evidence?.sha256) return c.json({ error: "evidence pointer (path + sha256) is required" }, 400);
+      // fail-closed: the scan must exist in the offline repo and hash-match
+      const ev = await verifyEvidence({ readOffline: async (p) => {
+        const api = portalApi(env, fetcher, now);
+        const res = await api.request(GENERATED_CONFIG.github.dataInstallationId, "GET", `/repos/${GENERATED_CONFIG.github.offlineRepo}/contents/${p}`);
+        if (res.status !== 200) return undefined;
+        const doc = JSON.parse(res.body) as { content?: string; encoding?: string };
+        return doc.encoding === "base64" ? Buffer.from(doc.content ?? "", "base64").toString("utf8") : (doc.content ?? "");
+      } }, { repo: GENERATED_CONFIG.github.offlineRepo, path: evidence.path, sha256: evidence.sha256 });
+      if (!ev.valid) return c.json({ error: ev.reason }, 400);
+
+      const orgSlug = String(body["org_slug"] ?? "").trim();
+      const covered = Array.isArray(body["covered"]) ? (body["covered"] as Array<Record<string, unknown>>) : [];
+      if (!orgSlug || covered.length === 0) return c.json({ error: "org_slug and covered[] are required" }, 400);
+      const oclaVersion = String(body["ocla_version"] ?? GENERATED_CONFIG.legal.current.ocla);
+      const edition = editionText(GENERATED_CONFIG, "ocla", oclaVersion);
+      if (!edition) return c.json({ error: "unknown ocla edition" }, 400);
+      const api = portalApi(env, fetcher, now);
+      const oclaId = randomToken();
+      const { path } = await appendRecord({ api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "ocla", {
+        id: oclaId,
+        orgSlug,
+        claEdition: { kind: "ocla", version: oclaVersion, textSha256: edition.sha256 },
+        covered: covered.map((r) => ({ githubLogin: String(r["githubLogin"] ?? "").toLowerCase(), email: (r["email"] as string) ?? null, name: (r["name"] as string) ?? "", title: (r["title"] as string) ?? "" })),
+        signatory: (body["signatory"] ?? {}) as Record<string, unknown>,
+        poc: (body["poc"] ?? {}) as Record<string, unknown>,
+        domains: Array.isArray(body["domains"]) ? body["domains"] : [],
+        pastContributionsIncluded: true,
+        signedAt: String(body["signed_at"] ?? new Date(now()).toISOString()),
+        source: "backfill",
+        note: String(body["note"] ?? ""),
+        evidence: { repo: GENERATED_CONFIG.github.offlineRepo, path: evidence.path, sha256: evidence.sha256 },
+      });
+      await ops(c, "backfill-ocla", oclaId, orgSlug);
+      let enrollUrl: string | undefined;
+      const pocEmail = ((body["poc"] ?? {}) as Record<string, unknown>)["email"];
+      if (typeof pocEmail === "string" && pocEmail.includes("@")) {
+        enrollUrl = `${portalBase}/enroll?t=${await signEnrollmentToken(env.OIDC_CLIENT_SECRET ?? "ops", oclaId, pocEmail, now())}`;
+      }
+      return c.json({ imported: oclaId, orgSlug, record: path, evidenceVerified: true, pocEnrollmentUrl: enrollUrl });
+    });
+
+    app.post("/admin/backfill-icla", async (c) => {
+      if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
+      const body = (await opsForm(c)) as Record<string, unknown>;
+      const evidence = body["evidence"] as { path?: string; sha256?: string } | undefined;
+      if (!evidence?.path || !evidence?.sha256) return c.json({ error: "evidence pointer is required" }, 400);
+      const ev = await verifyEvidence({ readOffline: async (p) => {
+        const api = portalApi(env, fetcher, now);
+        const res = await api.request(GENERATED_CONFIG.github.dataInstallationId, "GET", `/repos/${GENERATED_CONFIG.github.offlineRepo}/contents/${p}`);
+        if (res.status !== 200) return undefined;
+        const doc = JSON.parse(res.body) as { content?: string; encoding?: string };
+        return doc.encoding === "base64" ? Buffer.from(doc.content ?? "", "base64").toString("utf8") : (doc.content ?? "");
+      } }, { repo: GENERATED_CONFIG.github.offlineRepo, path: evidence.path, sha256: evidence.sha256 });
+      if (!ev.valid) return c.json({ error: ev.reason }, 400);
+      const login = String(body["github_login"] ?? "").toLowerCase();
+      const sub = String(body["ribose_id_sub"] ?? "");
+      if (!login || !sub) return c.json({ error: "github_login and ribose_id_sub are required" }, 400);
+      const iclaVersion = String(body["icla_version"] ?? GENERATED_CONFIG.legal.current.icla);
+      const edition = editionText(GENERATED_CONFIG, "icla", iclaVersion);
+      if (!edition) return c.json({ error: "unknown icla edition" }, 400);
+      const api = portalApi(env, fetcher, now);
+      const { path } = await appendRecord({ api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "icla", {
+        ribose_id_sub: sub,
+        github_login: login,
+        github_id: Number(body["github_id"] ?? 0),
+        name: String(body["name"] ?? ""),
+        email: String(body["email"] ?? ""),
+        email_verified: false,
+        alt_email: null,
+        country: String(body["country"] ?? ""),
+        claEdition: { kind: "icla", version: iclaVersion, textSha256: edition.sha256 },
+        signedAt: String(body["signed_at"] ?? new Date(now()).toISOString()),
+        source: "backfill",
+        past_contributions_included: true,
+        note: String(body["note"] ?? "evidence-backed import; identity binding follows at first portal sign-in"),
+        evidence: { repo: GENERATED_CONFIG.github.offlineRepo, path: evidence.path, sha256: evidence.sha256 },
+      });
+      await ops(c, "backfill-icla", login);
+      return c.json({ imported: login, record: path, evidenceVerified: true });
+    });
+
+    app.post("/admin/invite-poc", async (c) => {
+      if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
+      const body = (await opsForm(c)) as Record<string, unknown>;
+      const oclaId = String(body["ocla_id"] ?? "");
+      const email = String(body["email"] ?? "").toLowerCase();
+      if (!oclaId || !email.includes("@")) return c.json({ error: "ocla_id and email are required" }, 400);
+      const token = await signEnrollmentToken(env.OIDC_CLIENT_SECRET ?? "ops", oclaId, email, now());
+      await ops(c, "invite-poc", oclaId, email);
+      return c.json({ inviteUrl: `${portalBase}/enroll?t=${token}`, gatedOn: `${email} verified on the claimant's identity account` });
+    });
+
+    app.post("/admin/approve-request", async (c) => {
+      if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
+      const body = (await opsForm(c)) as Record<string, unknown>;
+      const db = d1(env);
+      if (!db) return c.json({ error: "join queue unavailable" }, 503);
+      const requestId = String(body["request_id"] ?? "");
+      const pending = (await db.prepare("SELECT * FROM join_requests WHERE id = ? LIMIT 1").bind(requestId).first<Record<string, unknown>>());
+      if (!pending) return c.json({ error: "no such request" }, 404);
+      // staff bypass: the LEGAL outcome is still the append-only mod, recorded as staff-approved
+      const api = portalApi(env, fetcher, now);
+      await appendRecord({ api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "ocla-mod", {
+        id: randomToken(),
+        oclaId: String(pending["ocla_id"]),
+        add: [{ githubLogin: String(pending["login"]), email: (pending["email"] as string) ?? null, name: String(pending["ribose_sub"]), title: "staff bypass approval" }],
+        recordedAt: new Date(now()).toISOString(),
+        actorRiboseSub: "ops",
+        reason: "staff bypass approval",
+      });
+      await decideRequest(db, requestId, "approved", "ops", new Date(now()).toISOString());
+      await ops(c, "bypass-approve", requestId);
+      return c.json({ approved: requestId });
+    });
+
+    app.get("/admin/audit", async (c) => {
+      if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
+      const db = d1(env);
+      if (!db) return c.json({ entries: [] });
+      const res = await db.prepare("SELECT * FROM audit_log ORDER BY at DESC LIMIT 100").bind().all<Record<string, unknown>>();
+      return c.json({ entries: res.results ?? [] });
     });
   }
 
