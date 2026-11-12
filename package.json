@@ -1,0 +1,33 @@
+{
+  "name": "ribose-cla",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ribose CLA — Contributor License Agreement enforcement for the Ribose GitHub estate (GitHub App)",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/riboseinc/cla"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "wrangler deploy --dry-run --config wrangler.example.toml",
+    "dev": "wrangler dev --config wrangler.example.toml"
+  },
+  "dependencies": {
+    "hono": "^4.13.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260826.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.126.0"
+  }
+}
