@@ -74,3 +74,14 @@ const rowToRequest = (r: Record<string, unknown>): JoinRequest => ({
   decidedBy: (r["decided_by"] as string) ?? null,
   decidedAt: (r["decided_at"] as string) ?? null,
 });
+
+/** Staff-console audit trail (migrations/0002). Fail-soft: an audit
+ *  failure never blocks the action it records, but it THROWS on test
+ *  fixtures that pass a db. */
+export async function audit(db: D1Like | undefined, entry: { actor: string; action: string; target?: string; detail?: string; at: string; id: string }): Promise<void> {
+  if (!db) return;
+  await db
+    .prepare("INSERT INTO audit_log (id, at, actor, action, target, detail) VALUES (?, ?, ?, ?, ?, ?)")
+    .bind(entry.id, entry.at, entry.actor, entry.action, entry.target ?? null, entry.detail ?? null)
+    .run();
+}
