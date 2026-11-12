@@ -22,7 +22,7 @@ export type AttributionRecord = {
   repo: string;
   pr: number;
   login: string;
-  agreement: unknown;
+  agreement: { kind: "icla" | "ocla" | "staff"; version?: string; oclaId?: string; orgSlug?: string; org?: string; role?: string };
   recordedAt: string;
 };
 
@@ -38,6 +38,18 @@ export type OclaFile = OclaRecord & {
   source: string;
   evidence?: Evidence;
 };
+
+export function parseAttribution(v: unknown): AttributionRecord | undefined {
+  if (!isObj(v)) return undefined;
+  const id = str(v["id"]);
+  const repo = str(v["repo"]);
+  const login = str(v["login"]);
+  const recordedAt = str(v["recordedAt"]);
+  const pr = v["pr"];
+  const agreement = isObj(v["agreement"]) ? (v["agreement"] as AttributionRecord["agreement"]) : undefined;
+  if (!id || !repo || !login || !recordedAt || typeof pr !== "number" || !agreement || !agreement.kind) return undefined;
+  return { id, repo, pr, login, agreement, recordedAt };
+}
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);

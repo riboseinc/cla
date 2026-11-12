@@ -1,6 +1,6 @@
 import type { Editions, IclaRecord, OclaRecord, PrVerdict, StoreSnapshot } from "@riboseinc/cla-kernel";
 import { evaluate } from "@riboseinc/cla-kernel";
-import { foldScheduleA, parseIcla, parseOcla, parseOclaMod, parseRevocation, type OclaModRecord } from "./records";
+import { foldScheduleA, parseIcla, parseOcla, parseOclaMod, parseRevocation, parseAttribution, type OclaModRecord, type AttributionRecord } from "./records";
 
 /**
  * The store leg: the data repo's record tree -> a kernel snapshot.
@@ -32,6 +32,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
   const oclas: OclaRecord[] = [];
   const modsByOcla = new Map<string, OclaModRecord[]>();
   const revokedIds: string[] = [];
+  const attributions: NonNullable<StoreSnapshot["attributions"]> = [];
   const rejected: { path: string; reason: string }[] = [];
 
   const sorted = [...paths].sort(); // creation order: ts-encoded paths sort correctly
@@ -59,8 +60,11 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
     } else if (path.startsWith("revocation/")) {
       const target = parseRevocation(parsed);
       target ? revokedIds.push(target) : rejected.push({ path, reason: "invalid revocation" });
+    } else if (path.startsWith("attribution/")) {
+      const r = parseAttribution(parsed);
+      r ? attributions.push({ repo: r.repo, pr: r.pr, login: r.login, agreement: r.agreement as NonNullable<StoreSnapshot["attributions"]>[number]["agreement"] }) : rejected.push({ path, reason: "invalid attribution" });
     }
-    // other namespaces (link/, role/, attribution/) are not kernel inputs
+    // link/ and role/ are portal inputs, not kernel inputs
   }
 
   const revoked = new Set(revokedIds);
@@ -78,6 +82,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
       iclas: iclas.filter((r) => !revoked.has(r.id)),
       oclas: effectiveOclas,
       revokedIds, // kernel re-checks; harmless, keeps the revocation fact visible
+      attributions,
     },
     rejected,
   };

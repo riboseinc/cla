@@ -19,7 +19,7 @@ export type Committer = {
 };
 
 export type PrInput = {
-  context: { org: string; repo: string };
+  context: { org: string; repo: string; pr: number };
   committers: Committer[];
 };
 
@@ -60,6 +60,8 @@ export type StoreSnapshot = {
   oclas: OclaRecord[];
   /** Record ids killed by revocation/voidance — coverage reads as if they never existed. */
   revokedIds: string[];
+  /** Per-PR agreement elections: a stored choice resolves must-specify (docs/design.md §3.11). */
+  attributions?: Array<{ repo: string; pr: number; login: string; agreement: AgreementRef }>;
 };
 
 // ---- outputs ----
@@ -167,8 +169,23 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
       committers.push({ login: resolvedLogin, status: "covered", path: p.path, agreement: p.agreement, matchedBy });
     } else if (paths.length > 1) {
       const options = paths.map((p) => p.agreement!).filter(Boolean);
-      committers.push({ login: resolvedLogin, status: "must-specify", options, matchedBy });
-      if (resolvedLogin) mustSpecify[resolvedLogin] = options;
+      // A stored election for THIS (repo, pr, login) resolves the ambiguity
+      // — but only while the chosen agreement is still among the live paths.
+      const chosen = resolvedLogin
+        ? (snap.attributions ?? []).find(
+            (a) =>
+              a.pr === pr.context.pr &&
+              normalize(a.repo) === normalize(`${pr.context.org}/${pr.context.repo}`) &&
+              normalize(a.login) === normalize(resolvedLogin),
+          )
+        : undefined;
+      const match = chosen ? paths.find((p) => agreementKey(p.agreement!) === agreementKey(chosen.agreement)) : undefined;
+      if (match) {
+        committers.push({ login: resolvedLogin, status: "covered", path: match.path, agreement: match.agreement, matchedBy });
+      } else {
+        committers.push({ login: resolvedLogin, status: "must-specify", options, matchedBy });
+        if (resolvedLogin) mustSpecify[resolvedLogin] = options;
+      }
     } else {
       committers.push({ login: resolvedLogin, status: "missing" });
       if (resolvedLogin) missing.push(resolvedLogin);
@@ -177,3 +194,6 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
 
   return { verdict: missing.length > 0 ? "fail" : "pass", committers, missing, mustSpecify };
 }
+
+const agreementKey = (a: AgreementRef): string =>
+  a.kind === "ocla" ? `ocla:${a.oclaId}` : a.kind === "icla" ? "icla" : `staff:${a.org}:${a.role}`;

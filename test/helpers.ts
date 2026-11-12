@@ -88,11 +88,29 @@ export function makeFixture(): Fixture {
         { sha: "c", author: { login: "dependabot[bot]", type: "Bot" }, commit: { author: { email: "bot@x.example" } } },
       ]);
     }
+    if (u.pathname === "/repos/rnpgp/rnp/pulls/1") {
+      return json(200, { head: { sha: "abc123" } });
+    }
     if (u.pathname === "/repos/example-org/cla-data/git/trees/HEAD") {
-      return json(200, { tree: [{ path: "ocla/2026/03/mtg.json", type: "blob" }, { path: "README.md", type: "blob" }] });
+      return json(200, { tree: [{ path: "ocla/2026/03/mtg.json", type: "blob" }, { path: "icla/2026/11/tj.json", type: "blob" }, { path: "README.md", type: "blob" }] });
     }
     if (u.pathname === "/repos/example-org/cla-data/contents/ocla/2026/03/mtg.json") {
       return json(200, { content: Buffer.from(JSON.stringify(DATA_OCLA())).toString("base64"), encoding: "base64" });
+    }
+    if (u.pathname === "/repos/example-org/cla-data/contents/icla/2026/11/tj.json") {
+      return json(200, {
+        content: Buffer.from(
+          JSON.stringify({
+            id: "icla-tj",
+            githubLogin: "tj-91",
+            email: "johannes@mtg.example",
+            claEdition: { kind: "icla", version: CURRENT_EDITIONS.icla.version, textSha256: CURRENT_EDITIONS.icla.sha256 },
+            pastContributionsIncluded: true,
+            source: "portal",
+          }),
+        ).toString("base64"),
+        encoding: "base64",
+      });
     }
     // write-endpoint defaults (tests assert on captured calls)
     if (u.pathname.endsWith("/check-runs") && init?.method === "POST") return json(201, {});

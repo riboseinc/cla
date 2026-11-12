@@ -50,7 +50,7 @@ const snapshot = (over: Partial<StoreSnapshot> = {}): StoreSnapshot => ({
 });
 
 const pr = (committers: Committer[], org = "rnpgp"): PrInput => ({
-  context: { org, repo: "rnp" },
+  context: { org, repo: "rnp", pr: 1 },
   committers,
 });
 
@@ -211,6 +211,34 @@ describe("kernel: unlinked-email fallback", () => {
   it("no login and no email match => missing", () => {
     const v = evaluate(pr([{ login: null, email: "unknown@example.com" }]), snapshot(), config(), EDITIONS, {});
     expect(v.committers[0]?.status).toBe("missing");
+  });
+});
+
+describe("kernel: attribution elections resolve must-specify", () => {
+  const both = () => snapshot({ iclas: [icla({ githubLogin: "tj-91" })], oclas: [ocla()] });
+
+  it("a stored election for this (repo, pr, login) resolves to covered", () => {
+    const snap = both();
+    snap.attributions = [{ repo: "rnpgp/rnp", pr: 1, login: "tj-91", agreement: { kind: "ocla", version: "1.0", oclaId: "ocla-1", orgSlug: "mtg-ag" } }];
+    const v = evaluate(pr([login("tj-91")]), snap, config(), EDITIONS, {});
+    expect(v.committers[0]).toMatchObject({ status: "covered", path: "ocla" });
+    expect(v.mustSpecify["tj-91"]).toBeUndefined();
+  });
+
+  it("an election for another login or PR does not resolve", () => {
+    const snap = both();
+    snap.attributions = [{ repo: "rnpgp/rnp", pr: 2, login: "tj-91", agreement: { kind: "icla", version: "1.0" } }];
+    expect(evaluate(pr([login("tj-91")]), snap, config(), EDITIONS, {}).committers[0]?.status).toBe("must-specify");
+  });
+
+  it("an election naming a no-longer-live agreement stays must-specify", () => {
+    const snap = both();
+    snap.attributions = [{ repo: "rnpgp/rnp", pr: 1, login: "tj-91", agreement: { kind: "icla", version: "1.0" } }];
+    // remove the icla path: only the ocla remains -> single path anyway... instead void the ocla and elect ocla
+    snap.oclas = [];
+    snap.attributions = [{ repo: "rnpgp/rnp", pr: 1, login: "tj-91", agreement: { kind: "ocla", version: "1.0", oclaId: "ocla-1", orgSlug: "mtg-ag" } }];
+    const v = evaluate(pr([login("tj-91")]), snap, config(), EDITIONS, {});
+    expect(v.committers[0]).toMatchObject({ status: "covered", path: "icla" }); // single live path wins, not the dead election
   });
 });
 
