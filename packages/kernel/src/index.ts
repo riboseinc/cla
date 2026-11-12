@@ -16,8 +16,20 @@ export type ClaEdition = {
   textSha256: string;
 };
 
-export type KernelInput = {
-  editions: { icla: ClaEdition; ocla: ClaEdition };
-};
+export {
+  evaluate,
+  type AgreementRef,
+  type Committer,
+  type CommitterVerdict,
+  type Config,
+  type Editions,
+  type IclaRecord,
+  type OclaCoveredRow,
+  type OclaRecord,
+  type PrInput,
+  type PrVerdict,
+  type StaffMap,
+  type StoreSnapshot,
+} from "./evaluate";
 
 export const kernelVersion = (): string => KERNEL_VERSION;
