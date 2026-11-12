@@ -1,0 +1,19 @@
+/**
+ * The single runtime boundary: what the Worker's environment provides.
+ * Every secret here is fail-closed when unset — postures never soften
+ * (docs/design.md §9).
+ */
+export type Env = {
+  /** GitHub App private key (PEM) — unset closes all GitHub legs. */
+  APP_PRIVATE_KEY?: string;
+  /** GitHub webhook secret — unset closes the webhook surface. */
+  WEBHOOK_SECRET?: string;
+  /** Ribose ID OIDC confidential-client secret — unset closes the portal. */
+  OIDC_CLIENT_SECRET?: string;
+  /** Staff console token — unset means /admin answers 404. */
+  OPS_TOKEN?: string;
+  /** Identity-service subject-roles lookup token (issue #10). */
+  SERVICE_TOKEN?: string;
+
+  [key: string]: unknown;
+};

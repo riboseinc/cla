@@ -1,0 +1,19 @@
+# The generic instance template — proves the bundle (`npm run build`).
+# Real deployment values live in the PRIVATE instance repo; instance
+# data is [vars] + secrets + D1 rows, never compiled-in. Secrets are
+# never set here (fail-closed postures, docs/design.md §9).
+name = "ribose-cla"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+[vars]
+# INSTANCE_NAME = "Example"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cla-ephemeral"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "00000000000000000000000000000000"

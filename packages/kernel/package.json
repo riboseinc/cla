@@ -1,0 +1,9 @@
+{
+  "name": "@riboseinc/cla-kernel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The pure CLA evaluation kernel — zero I/O",
+  "main": "src/index.ts",
+  "types": "src/index.ts"
+}
