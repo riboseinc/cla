@@ -33,8 +33,8 @@ onMounted(async () => {
       :class="state === 'live' ? 'bg-[#43935F]' : 'bg-mist/50'"
       aria-hidden="true"
     ></span>
-    <template v-if="state === 'live'">operational{{ instance ? ` · ${instance}` : "" }}</template>
-    <template v-else-if="state === 'checking'">checking…</template>
-    <template v-else>awaiting connection</template>
+    <template v-if="state === 'live'">The service is operational{{ instance ? ` for ${instance}` : "" }}</template>
+    <template v-else-if="state === 'checking'">The service is being checked.</template>
+    <template v-else>The service is not connected to its GitHub App yet.</template>
   </span>
 </template>

@@ -57,7 +57,7 @@ async function elect() {
 
 <template>
   <div class="mx-auto max-w-lg">
-    <h1 class="font-serif text-2xl font-semibold">Which agreement covers this contribution?</h1>
+    <h1 class="font-sans text-2xl font-bold">Stating the agreement that covers a contribution</h1>
 
     <p v-if="state === 'checking'" class="mt-3 text-mist">Validating the link…</p>
 

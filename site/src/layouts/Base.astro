@@ -1,50 +1,106 @@
 ---
-import "@fontsource/inter/400.css";
-import "@fontsource/inter/500.css";
-import "@fontsource/inter/600.css";
-import "@fontsource/source-serif-4/400.css";
-import "@fontsource/source-serif-4/600.css";
-import "@fontsource/ibm-plex-mono/400.css";
-import "@fontsource/ibm-plex-mono/500.css";
 import "../styles/site.css";
-import HonestChip from "../islands/HonestChip.vue";
+import ThemeToggle from "../islands/ThemeToggle.vue";
 
 interface Props {
   title: string;
-  /** Instrument pages get the paper counterpoint in the header tick. */
+  /** Management consoles span wider. */
   wide?: boolean;
 }
 const { title, wide = false } = Astro.props;
+const nav = [
+  { href: "/icla", label: "Sign the ICLA" },
+  { href: "/organizations", label: "Organization coverage" },
+  { href: "/agreements", label: "My agreements" },
+];
+const current = Astro.url.pathname;
 ---
 
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
+    <script is:inline>
+      // The theme decision runs before paint: the stored preference wins,
+      // and the system preference is the fallback (www.ribose.com pattern).
+      (function () {
+        var stored = localStorage.getItem("theme");
+        var dark = stored === "dark" || (stored === null && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
   </head>
-  <body class="min-h-screen bg-ink text-[#E8EAED] font-sans antialiased">
-    <header class="border-b border-rule">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <a href="/" class="flex items-center gap-2.5">
-          <span class="h-2.5 w-2.5 rounded-[2px] bg-seal" aria-hidden="true"></span>
-          <span class="font-serif text-lg font-semibold tracking-tight">Ribose CLA</span>
+  <body>
+    <header class="site-header sticky top-0 z-40">
+      <div class="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
+        <a href="/" class="flex shrink-0 items-center no-underline" aria-label="Ribose home">
+          <img src="/brand/ribose-logo.svg" alt="Ribose" width="118" height="28" class="h-7 w-auto dark:hidden" />
+          <img src="/brand/ribose-logo-white.svg" alt="Ribose" width="118" height="28" class="hidden h-7 w-auto dark:block" />
         </a>
-        <nav class="flex items-center gap-6 text-sm text-mist">
-          <a href="/icla" class="hover:text-[#E8EAED]">Sign the ICLA</a>
-          <a href="/organizations" class="hover:text-[#E8EAED]">Organizations</a>
-          <a href="/agreements" class="hover:text-[#E8EAED]">My agreements</a>
+        <span class="border-l border-line pl-3 text-sm text-slate-500 dark:text-slate-400">Contribution Management</span>
+        <nav class="ml-auto hidden items-center gap-0.5 md:flex" aria-label="Primary">
+          {nav.map((item) => (
+            <a
+              href={item.href}
+              class:list={["nav-link", current.startsWith(item.href) && "font-semibold"]}
+              aria-current={current.startsWith(item.href) ? "page" : undefined}
+            >{item.label}</a>
+          ))}
         </nav>
-        <HonestChip client:load />
+        <div class="ml-auto flex items-center gap-1.5 md:ml-0">
+          <ThemeToggle client:load />
+        </div>
       </div>
     </header>
     <main class={`mx-auto px-6 py-10 ${wide ? "max-w-6xl" : "max-w-3xl"}`}>
       <slot />
     </main>
-    <footer class="border-t border-rule">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 text-xs text-mist">
-        <span>Ribose CLA — BSD-3-Clause. The instrument is the record.</span>
-        <a class="hover:text-[#E8EAED]" href="https://github.com/riboseinc/cla">source</a>
+    <footer class="border-t border-line dark:border-slate-800">
+      <div class="mx-auto max-w-6xl px-4 py-14 sm:px-6">
+        <div class="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+          <div>
+            <img src="/brand/ribose-logo.svg" alt="Ribose" width="118" height="28" class="h-7 w-auto dark:hidden" />
+            <img src="/brand/ribose-logo-white.svg" alt="Ribose" width="118" height="28" class="hidden h-7 w-auto dark:block" />
+            <p class="mt-4 max-w-xs text-sm leading-6 text-slate-600 dark:text-slate-400">
+              The Ribose Contribution Management service records Contributor License Agreements and applies them to pull requests across the GitHub organizations of Ribose Inc.
+            </p>
+            <p class="mt-3 text-xs text-slate-500 dark:text-slate-500">
+              The agreements on record are applied to the repositories of riboseinc, metanorma, rnpgp, openitu and the other organizations of the Ribose Group on GitHub.
+            </p>
+          </div>
+          <nav aria-label="Site">
+            <p class="eyebrow">Service</p>
+            <ul class="mt-4 space-y-2.5 text-sm">
+              <li><a href="/icla" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white">Sign the ICLA</a></li>
+              <li><a href="/organizations" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white">Organization coverage</a></li>
+              <li><a href="/sign-ocla" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white">Execute an Organization CLA</a></li>
+              <li><a href="/agreements" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white">My agreements</a></li>
+            </ul>
+          </nav>
+          <nav aria-label="Network">
+            <p class="eyebrow">Network</p>
+            <ul class="mt-4 space-y-2.5 text-sm">
+              <li><a href="https://github.com/riboseinc" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white" rel="noopener">github.com/riboseinc</a></li>
+              <li><a href="https://github.com/metanorma" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white" rel="noopener">github.com/metanorma</a></li>
+              <li><a href="https://github.com/rnpgp" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white" rel="noopener">github.com/rnpgp</a></li>
+              <li><a href="https://www.ribose.com" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white" rel="noopener">www.ribose.com</a></li>
+              <li><a href="https://id.ribose.com" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white" rel="noopener">id.ribose.com</a></li>
+            </ul>
+          </nav>
+          <nav aria-label="Documents">
+            <p class="eyebrow">Agreements</p>
+            <ul class="mt-4 space-y-2.5 text-sm">
+              <li><a href="/agreements/text/icla/1.0" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white">Individual CLA (edition 1.0)</a></li>
+              <li><a href="/agreements/text/ocla/1.0" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white">Organization CLA (edition 1.0)</a></li>
+              <li><a href="https://github.com/riboseinc/cla" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white" rel="noopener">Source repository</a></li>
+            </ul>
+          </nav>
+        </div>
+        <div class="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-6 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-500">
+          <p>© {new Date().getFullYear()} Ribose Group Inc.</p>
+          <p>The status check <code class="font-mono">cla/ribose</code> evaluates pull requests in accordance with the agreements on record.</p>
+        </div>
       </div>
     </footer>
   </body>

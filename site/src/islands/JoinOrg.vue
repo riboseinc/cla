@@ -1,6 +1,9 @@
 <script setup lang="ts">
-/** Join by exact slug — orgs are NOT enumerable (owner decision
- *  2026-11-13): your PoC shares the slug, you request coverage. */
+/** Coverage under an Organization CLA. The Point of Contact of the
+ *  organization manages the Schedule A and adds handles directly; this
+ *  page requests an addition for a specific organization by its slug.
+ *  Organizations are not enumerable: the service reveals nothing about
+ *  an organization to a caller who does not already know its slug. */
 import { onMounted, ref } from "vue";
 
 type Phase = "checking" | "signin" | "ask" | "requested" | "error";
@@ -32,52 +35,79 @@ async function request() {
 </script>
 
 <template>
-  <p v-if="phase === 'checking'" class="text-mist">Checking your session…</p>
+  <p v-if="phase === 'checking'" class="text-slate-500 dark:text-slate-400">The session is being checked.</p>
 
   <template v-else-if="phase === 'signin'">
-    <h1 class="font-serif text-2xl font-semibold">Join your organization's CLA</h1>
-    <p class="mt-3 max-w-xl text-sm leading-relaxed text-mist">Sign in with your GitHub account first — your handle is what gets covered.</p>
-    <a href="/signin/github" class="mt-6 inline-block rounded-sm bg-[#E8EAED] px-4 py-3 font-medium text-ink hover:bg-white">Sign in</a>
+    <p class="font-mono text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Organization CLA · coverage</p>
+    <h1 class="mt-3 font-sans text-2xl font-bold">Coverage begins with a verified GitHub handle</h1>
+    <p class="mt-4 max-w-2xl text-base leading-relaxed">
+      The service records a coverage request only after the contributor has
+      proven ownership of the GitHub handle for which coverage is requested.
+      The proof happens through GitHub itself.
+    </p>
+    <a href="/signin/github" class="mt-6 inline-block rounded-sm bg-brand-500 px-5 py-3 font-semibold text-ink transition-colors hover:bg-brand-400">
+      Sign in with GitHub
+    </a>
   </template>
 
   <template v-else-if="phase === 'ask'">
-    <h1 class="font-serif text-2xl font-semibold">Request Schedule-A coverage</h1>
-    <p class="mt-3 max-w-xl text-sm leading-relaxed text-mist">
-      Enter your organization's slug — your Point of Contact (or your
-      onboarding doc) has it. Organizations are not listed by design:
-      coverage is requested by exact name, then approved by your PoC.
+    <p class="font-mono text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Organization CLA · coverage</p>
+    <h1 class="mt-3 font-sans text-2xl font-bold">Requesting coverage under an Organization CLA</h1>
+
+    <p class="mt-4 max-w-2xl text-base leading-relaxed">
+      An employee whose organization has executed an Organization CLA is
+      covered when their GitHub handle appears in the Schedule A of that
+      agreement. The Point of Contact of the organization manages the
+      Schedule A, and the fastest route to coverage is a message to that
+      person, who adds the handle directly.
     </p>
+    <p class="mt-4 max-w-2xl text-base leading-relaxed">
+      A contributor who knows the slug of the organization can also request
+      the addition on this page. The request is placed before the Point of
+      Contact, who approves it before coverage begins. The service does not
+      publish the organizations that hold agreements, and it answers a
+      request only to a caller who states an existing slug.
+    </p>
+
     <form class="mt-6 flex max-w-md gap-2" @submit.prevent="request">
+      <label class="sr-only" for="org-slug">Organization slug</label>
       <input
+        id="org-slug"
         v-model="slug"
-        placeholder="e.g. mtg-ag"
-        class="w-full rounded-sm border border-rule bg-ground-2 px-3 py-2 font-mono text-sm focus:border-seal focus:outline-none"
+        placeholder="organization-slug"
+        autocomplete="off"
+        class="w-full rounded-sm border border-line bg-paper px-3 py-2 font-mono text-sm text-ink focus:border-brand-500 focus:outline-none dark:border-ink-2 dark:bg-ink dark:text-slate-100"
       />
-      <button class="whitespace-nowrap rounded-sm bg-seal px-4 py-2 font-medium text-white hover:opacity-90">Request coverage</button>
+      <button class="whitespace-nowrap rounded-sm bg-brand-500 px-4 py-2 font-semibold text-ink hover:bg-brand-400">Request coverage</button>
     </form>
-    <p v-if="error" class="mt-3 max-w-md text-sm text-caution" role="alert">{{ error }}</p>
-    <p class="mt-6 text-xs leading-relaxed text-mist">
-      No Organization CLA at your employer? Point them at
-      <a class="text-seal hover:underline" href="/sign-ocla">/sign-ocla</a> — it takes minutes,
-      and you'll be covered the moment they're recorded.
+    <p v-if="error" class="mt-3 max-w-md text-sm text-accent-600 dark:text-accent-400" role="alert">{{ error }}</p>
+    <p class="mt-6 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+      An organization that has not executed an Organization CLA is invited
+      to do so on the execution page, which takes minutes; the employees of
+      the organization are covered from the moment the agreement is
+      recorded and the Schedule A carries their handles.
     </p>
+    <a href="/sign-ocla" class="text-sm text-brand-600 dark:text-brand-400 hover:underline">Open the execution page</a>
   </template>
 
   <template v-else-if="phase === 'requested'">
-    <div class="mx-auto max-w-md rounded-sm border border-rule bg-ground-2 p-8 text-center">
-      <span class="mx-auto block h-3 w-3 rounded-[2px] bg-caution" aria-hidden="true"></span>
-      <h1 class="mt-4 font-serif text-2xl font-semibold">Requested.</h1>
-      <p class="mt-3 text-sm leading-relaxed text-mist">
-        Your coverage request for <strong class="text-[#E8EAED]">{{ requested }}</strong> is with the
-        organization's Point of Contact. You'll get an email when it's
-        decided, and your next pull request will pick coverage up the
-        moment it lands.
+    <div class="mx-auto max-w-xl rounded-sm border border-line bg-paper p-8 dark:border-ink-2 dark:bg-ink-2">
+      <h1 class="font-sans text-2xl font-bold">The request has been placed.</h1>
+      <p class="mt-4 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+        The request for the handle of the signed-in contributor is before the
+        Point of Contact of {{ requested }}. The Point of Contact receives a
+        notification by email, and the service sends a second message when
+        the request is decided. The coverage applies to pull requests at the
+        next evaluation after the approval.
       </p>
-      <a href="/agreements" class="mt-6 inline-block text-sm text-seal hover:underline">Track it in my agreements →</a>
+      <a href="/agreements" class="mt-6 inline-block text-sm text-brand-600 dark:text-brand-400 hover:underline">Follow the request on the agreements page</a>
     </div>
   </template>
 
   <template v-else>
-    <p class="text-mist">{{ error }} — check the slug with your Point of Contact.</p>
+    <p class="max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+      {{ error }} The slug can be confirmed with the Point of Contact of the
+      organization, and the request can be repeated at any time.
+    </p>
   </template>
 </template>
