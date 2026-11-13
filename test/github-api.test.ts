@@ -106,6 +106,18 @@ describe("GithubApi: installation tokens", () => {
     const api = new GithubApi(memoryDeps({ privateKeyPem: privatePem, fetcher: async () => new Response("{}", { status: 401 }) }));
     await expect(api.installationToken(42)).rejects.toThrow(/401/);
   });
+
+  it("invokes the fetcher as a bare function (Workers rejects a method-style global fetch)", async () => {
+    const { privatePem } = await makeKeyPem();
+    let receiver: unknown = "unset";
+    const fetcher = function (this: unknown, _url: string, _init?: RequestInit): Promise<Response> {
+      receiver = this;
+      return Promise.resolve(new Response(JSON.stringify({ token: "t" }), { status: 201 }));
+    };
+    const api = new GithubApi(memoryDeps({ privateKeyPem: privatePem, fetcher }));
+    await api.installationToken(42);
+    expect(receiver).toBeUndefined();
+  });
 });
 
 describe("GithubApi: ETag-conditional requests", () => {

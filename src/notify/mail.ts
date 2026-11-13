@@ -23,8 +23,11 @@ export async function sendMail(deps: MailDeps, to: string, subject: string, text
   if (!deps.providerUrl || !deps.providerKey) return { sent: false, reason: "mail provider unconfigured (honest no-op)" };
   if (deps.digestMode) return { sent: false, reason: "digest mode: the org summary will carry it" };
   if (!to.includes("@")) return { sent: false, reason: "refusing to send to a non-address" };
+  // Bare invocation: a global fetch called as a method is an illegal
+  // invocation in Workers.
+  const fetcher = deps.fetcher;
   try {
-    const res = await deps.fetcher(deps.providerUrl, {
+    const res = await fetcher(deps.providerUrl, {
       method: "POST",
       headers: { authorization: `Bearer ${deps.providerKey}`, "content-type": "application/json" },
       body: JSON.stringify({ from: deps.from, to: [to], subject, text }),
