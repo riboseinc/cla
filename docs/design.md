@@ -262,8 +262,11 @@ Evidence pointers: `{repo, path, sha256}` — the kernel treats
 missing/mismatched evidence as unsigned + flagged. **No branch
 protection on the data repos** (owner decision 2026-11-13): append-only
 is the app's writing discipline plus the D1 audit trail; corrections
-are new records by construction. D1: sessions, nonces, pending join
-requests, burst counters, audit log, installation-token cache.
+are new records by construction. Every record file carries a stable
+`id` field (the app writes one; the OCLA record uses its agreement id)
+— revocations and attributions reference it. D1: sessions, nonces,
+pending join requests, burst counters, audit log, installation-token
+cache.
 
 ## 9. Fail-closed postures (complete list)
 

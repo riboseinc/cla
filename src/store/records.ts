@@ -63,9 +63,9 @@ export function parseAttribution(v: unknown): AttributionRecord | undefined {
   const id = str(v["id"]);
   const repo = str(v["repo"]);
   const login = str(v["login"]);
-  const recordedAt = str(v["recordedAt"]);
+  const recordedAt = str(v["recordedAt"]) ?? str(v["recorded_at"]);
   const pr = v["pr"];
-  const agreement = isObj(v["agreement"]) ? (v["agreement"] as AttributionRecord["agreement"]) : undefined;
+  const agreement = isObj(v["agreement"]) ? (v["agreement"] as AttributionRecord["agreement"]) : isObj(v["agreement_ref"]) ? (v["agreement_ref"] as AttributionRecord["agreement"]) : undefined;
   if (!id || !repo || !login || !recordedAt || typeof pr !== "number" || !agreement || !agreement.kind) return undefined;
   return { id, repo, pr, login, agreement, recordedAt };
 }
@@ -85,15 +85,15 @@ export function parseEdition(v: unknown): ClaEdition | undefined {
 export function parseIcla(v: unknown): IclaFile | undefined {
   if (!isObj(v)) return undefined;
   const id = str(v["id"]);
-  const login = str(v["githubLogin"]);
-  const edition = parseEdition(v["claEdition"]);
+  const login = str(v["githubLogin"]) ?? str(v["github_login"]);
+  const edition = parseEdition(v["claEdition"]) ?? parseEdition(v["cla_edition"]);
   if (!id || !login || !edition) return undefined;
   return {
     id,
     githubLogin: login,
     email: str(v["email"]) ?? null,
     edition,
-    pastContributionsIncluded: v["pastContributionsIncluded"] === true,
+    pastContributionsIncluded: v["pastContributionsIncluded"] === true || v["past_contributions_included"] === true,
     source: str(v["source"]) ?? "unknown",
     evidence: isObj(v["evidence"]) ? (v["evidence"] as Evidence) : undefined,
   };
@@ -102,12 +102,12 @@ export function parseIcla(v: unknown): IclaFile | undefined {
 export function parseOcla(v: unknown): OclaFile | undefined {
   if (!isObj(v)) return undefined;
   const id = str(v["id"]);
-  const slug = str(v["orgSlug"]);
-  const edition = parseEdition(v["claEdition"]);
+  const slug = str(v["orgSlug"]) ?? str(v["org_slug"]);
+  const edition = parseEdition(v["claEdition"]) ?? parseEdition(v["cla_edition"]);
   const covered = Array.isArray(v["covered"])
     ? v["covered"].flatMap((row) => {
         if (!isObj(row)) return [];
-        const l = str(row["githubLogin"]);
+        const l = str(row["githubLogin"]) ?? str(row["github_login"]);
         return l ? [{ githubLogin: l, email: str(row["email"]) ?? null }] : [];
       })
     : [];
@@ -120,7 +120,7 @@ export function parseOcla(v: unknown): OclaFile | undefined {
     signatory: (isObj(v["signatory"]) ? v["signatory"] : {}) as OclaFile["signatory"],
     poc: (isObj(v["poc"]) ? v["poc"] : {}) as OclaFile["poc"],
     domains: Array.isArray(v["domains"]) ? v["domains"].filter((d): d is string => typeof d === "string") : [],
-    pastContributionsIncluded: v["pastContributionsIncluded"] === true,
+    pastContributionsIncluded: v["pastContributionsIncluded"] === true || v["past_contributions_included"] === true,
     source: str(v["source"]) ?? "unknown",
     evidence: isObj(v["evidence"]) ? (v["evidence"] as Evidence) : undefined,
   };
@@ -129,18 +129,18 @@ export function parseOcla(v: unknown): OclaFile | undefined {
 export function parseOclaMod(v: unknown): OclaModRecord | undefined {
   if (!isObj(v)) return undefined;
   const id = str(v["id"]);
-  const oclaId = str(v["oclaId"]);
-  const recordedAt = str(v["recordedAt"]);
+  const oclaId = str(v["oclaId"]) ?? str(v["ocla_id"]);
+  const recordedAt = str(v["recordedAt"]) ?? str(v["recorded_at"]);
   if (!id || !oclaId || !recordedAt) return undefined;
   const add = Array.isArray(v["add"])
     ? v["add"].flatMap((row) => {
         if (!isObj(row)) return [];
-        const l = str(row["githubLogin"]);
+        const l = str(row["githubLogin"]) ?? str(row["github_login"]);
         return l ? [{ githubLogin: l, email: str(row["email"]) ?? null }] : [];
       })
     : undefined;
-  const removeLogins = Array.isArray(v["removeLogins"])
-    ? v["removeLogins"].filter((l): l is string => typeof l === "string")
+  const removeLogins = Array.isArray(v["removeLogins"] ?? v["remove_logins"])
+    ? ((v["removeLogins"] ?? v["remove_logins"]) as unknown[]).filter((l): l is string => typeof l === "string")
     : undefined;
   return { id, oclaId, add, removeLogins, recordedAt };
 }
