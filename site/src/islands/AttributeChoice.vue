@@ -14,9 +14,19 @@ onMounted(async () => {
   token.value = params.get("t") ?? "";
   pick.value = params.get("pick") ?? "";
   const me = await fetch("/api/agreements");
+  if (me.status === 404) {
+    state.value = "error";
+    message.value = "The signing portal is not open yet.";
+    return;
+  }
   if (me.status === 401) {
     // not signed in: the completion of sign-in returns here — relay through the API first to validate the token exists
     state.value = "signin";
+    return;
+  }
+  if (!me.ok) {
+    state.value = "error";
+    message.value = `The portal answered ${me.status}.`;
     return;
   }
   await resolve();
