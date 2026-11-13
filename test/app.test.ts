@@ -50,6 +50,7 @@ describe("the public landing", () => {
       GITHUB_APP_ID: "1",
       OIDC_CLIENT_SECRET: "o",
       GITHUB_APP_CLIENT_ID: "c",
+      GITHUB_APP_CLIENT_SECRET: "cs",
     }).request("/");
     const html = await res.text();
     expect(html).toContain("operational");
