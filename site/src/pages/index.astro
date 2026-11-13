@@ -1,67 +1,113 @@
 ---
-export const prerender = true;
 import Base from "../layouts/Base.astro";
 ---
 
-<Base title="Ribose CLA">
-  <section class="py-10">
-    <p class="font-mono text-xs uppercase tracking-[0.2em] text-mist">Contributor License Agreements</p>
-    <h1 class="mt-4 max-w-2xl font-serif text-4xl font-semibold leading-tight md:text-5xl">
-      Contributions to Ribose stand on a
-      <span class="text-seal">signed instrument</span>.
+<Base title="Ribose Contribution Management">
+  <section class="py-8">
+    <p class="font-mono text-xs uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400">Ribose Contribution Management</p>
+    <h1 class="mt-4 max-w-3xl font-sans text-3xl font-bold leading-snug md:text-4xl">
+      Contributor License Agreements for the GitHub organizations of the Ribose estate
     </h1>
-    <p class="mt-6 max-w-2xl text-lg leading-relaxed text-mist">
-      You know exactly which edition you agreed to — the text is pinned
-      by its hash, and every record is public to you forever. Sign in
-      thirty seconds, or join your employer's Organization CLA.
+    <p class="mt-6 max-w-3xl text-base leading-relaxed">
+      Ribose publishes software whose licenses record the terms under which
+      contributions are accepted. The Ribose Contribution Management service
+      records those terms as Contributor License Agreements, applies the
+      agreements to each pull request across the GitHub organizations of the
+      Ribose estate, and reports the result of the evaluation as a status
+      check on the pull request.
+    </p>
+    <p class="mt-4 max-w-3xl text-base leading-relaxed">
+      A pull request whose contributors have no agreement on record cannot be
+      merged, because the license grants that the projects rely on would be
+      incomplete. The service comments on such a pull request with the steps
+      that each contributor can take, and it re-evaluates the pull request
+      after a signature or an approval is recorded.
     </p>
   </section>
 
-  <section class="grid gap-4 border-t border-rule pt-10 md:grid-cols-3">
-    <a
-      href="/icla"
-      class="group rounded-sm border border-rule bg-ground-2 p-6 transition-colors hover:border-seal/60"
-    >
-      <p class="font-mono text-xs uppercase tracking-[0.18em] text-mist">individual</p>
-      <h2 class="mt-3 font-serif text-xl font-semibold">Sign the ICLA</h2>
-      <p class="mt-2 text-sm leading-relaxed text-mist">
-        Covers you personally — present and future contributions, with
-        an explicit election to include your past work.
-      </p>
-      <span class="mt-4 inline-block text-sm text-seal group-hover:underline">Sign above the line →</span>
-    </a>
-    <a
-      href="/organizations"
-      class="group rounded-sm border border-rule bg-ground-2 p-6 transition-colors hover:border-seal/60"
-    >
-      <p class="font-mono text-xs uppercase tracking-[0.18em] text-mist">organization</p>
-      <h2 class="mt-3 font-serif text-xl font-semibold">Join your employer's CLA</h2>
-      <p class="mt-2 text-sm leading-relaxed text-mist">
-        If your company executed an Organization CLA, request Schedule A
-        coverage — your Point of Contact approves.
-      </p>
-      <span class="mt-4 inline-block text-sm text-seal group-hover:underline">Find your organization →</span>
-    </a>
-    <a
-      href="/sign-ocla"
-      class="group rounded-sm border border-rule bg-ground-2 p-6 transition-colors hover:border-seal/60"
-    >
-      <p class="font-mono text-xs uppercase tracking-[0.18em] text-mist">for companies</p>
-      <h2 class="mt-3 font-serif text-xl font-semibold">Execute an OCLA</h2>
-      <p class="mt-2 text-sm leading-relaxed text-mist">
-        Your organization signs once, declares its email domains, and
-        manages its own authorized contributors.
-      </p>
-      <span class="mt-4 inline-block text-sm text-seal group-hover:underline">Execute an OCLA →</span>
-    </a>
+  <section class="border-t border-line pt-8">
+    <h2 class="font-sans text-xl font-semibold">The agreements</h2>
+    <dl class="mt-4 space-y-4 text-base leading-relaxed">
+      <div>
+        <dt class="font-semibold">
+          The Individual Contributor License Agreement (ICLA)
+        </dt>
+        <dd class="text-slate-600 dark:text-slate-400">
+          The ICLA is executed by a person who contributes in a personal
+          capacity, and it covers the present and future contributions of
+          that person. The person elects at signing whether the agreement
+          also covers their previous contributions.
+        </dd>
+      </div>
+      <div>
+        <dt class="font-semibold">
+          The Organization CLA (OCLA)
+        </dt>
+        <dd class="text-slate-600 dark:text-slate-400">
+          The OCLA is executed by an organization whose employees contribute
+          on its behalf. The organization designates the employees who are
+          authorized to contribute through its Schedule A, and the Point of
+          Contact of the organization manages that list through the service.
+        </dd>
+      </div>
+      <div>
+        <dt class="font-semibold">
+          Staff and contractors
+        </dt>
+        <dd class="text-slate-600 dark:text-slate-400">
+          Employees of Ribose are covered by their employment, and their
+          employment status is resolved through the identity service of the
+          estate. Contractors are not covered by employment; a contractor
+          executes an ICLA, or joins the Organization CLA of the organization
+          that engages them.
+        </dd>
+      </div>
+    </dl>
   </section>
 
-  <section class="mt-12 border-t border-rule pt-8">
-    <p class="max-w-2xl font-serif text-lg leading-relaxed text-mist">
-      Already contributed and seeing the check on your pull request?
-      Comment <code class="rounded bg-ground-2 px-1.5 py-0.5 font-mono text-sm text-[#E8EAED]">@ribose-cla agree</code>
-      and follow the link — the comment counts, the record keeps every
-      field.
+  <section class="border-t border-line pt-8">
+    <h2 class="font-sans text-xl font-semibold">Signing</h2>
+    <div class="mt-4 grid gap-4 md:grid-cols-2">
+      <a
+        href="/icla"
+        class="rounded-sm border border-line bg-paper dark:bg-ink-2 p-6 transition-colors hover:border-brand-400"
+      >
+        <h3 class="font-semibold">Sign the ICLA</h3>
+        <p class="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+          The service binds the signature to a Ribose ID account and to a
+          verified GitHub handle, and it records the exact edition of the
+          agreement together with the SHA-256 hash of the text.
+        </p>
+        <span class="mt-3 inline-block text-sm text-brand-600 dark:text-brand-400">Open the signing page</span>
+      </a>
+      <a
+        href="/organizations"
+        class="rounded-sm border border-line bg-paper dark:bg-ink-2 p-6 transition-colors hover:border-brand-400"
+      >
+        <h3 class="font-semibold">Join an Organization CLA</h3>
+        <p class="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+          An employee whose organization has executed an OCLA requests
+          coverage for their GitHub handle; the Point of Contact of the
+          organization approves the request before coverage begins.
+        </p>
+        <span class="mt-3 inline-block text-sm text-brand-600 dark:text-brand-400">Request coverage</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="mt-10 border-t border-line pt-8">
+    <h2 class="font-sans text-xl font-semibold">Contributing through a pull request</h2>
+    <p class="mt-4 max-w-3xl text-base leading-relaxed">
+      A contributor who prefers to begin from the pull request writes the
+      comment
+      <code class="rounded-sm bg-ink-2 px-1.5 py-0.5 font-mono text-sm text-ink dark:text-slate-100">@ribose-cla agree</code>
+      on the pull request. The service replies with a link that completes the
+      signature, and the status check of the pull request is updated after
+      the signature is recorded. A pull request whose contributors are
+      covered by multiple agreements carries an additional step, in which
+      the contributor states under which agreement the contribution is made;
+      the service records that statement and cites it in the comment that it
+      posts after the pull request is merged.
     </p>
   </section>
 </Base>

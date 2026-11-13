@@ -77,11 +77,11 @@ async function sign() {
 </script>
 
 <template>
-  <p v-if="phase === 'checking'" class="text-mist">Reading the instrument…</p>
+  <p v-if="phase === 'checking'" class="text-slate-500 dark:text-slate-400">Reading the instrument…</p>
 
   <template v-else-if="phase === 'signin'">
     <h1 class="font-serif text-2xl font-semibold">Execute an Organization CLA</h1>
-    <p class="mt-3 max-w-xl text-sm leading-relaxed text-mist">
+    <p class="mt-3 max-w-xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
       The signatory signs in first — through your organization's identity
       account so the on-domain mailbox gate can hold. You need a
       <strong class="text-[#E8EAED]">verified mailbox on the company's domain</strong>
@@ -92,24 +92,24 @@ async function sign() {
 
   <template v-else-if="phase === 'form'">
     <h1 class="font-serif text-2xl font-semibold">Execute an Organization CLA — v{{ edition?.version }}</h1>
-    <p class="mt-2 text-sm text-mist">
-      Signing as <strong class="text-[#E8EAED]">@{{ me?.login }}</strong>
+    <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+      The signatory is <strong class="text-ink dark:text-slate-100">@{{ me?.login }}</strong>
       <template v-if="me?.email"> ({{ me?.email }}{{ me?.emailVerified ? ", verified" : ", UNVERIFIED" }})</template>
     </p>
 
     <div class="mt-6 grid gap-8 lg:grid-cols-[1fr_360px]">
       <div class="space-y-6">
         <section class="rounded-sm border border-rule bg-ground-2 p-6">
-          <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">company</h2>
+          <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">company</h2>
           <div class="mt-4 grid gap-3 md:grid-cols-2">
-            <label class="text-sm"><span class="text-mist">Legal name</span>
-              <input v-model="orgName" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-seal focus:outline-none" /></label>
-            <label class="text-sm"><span class="text-mist">Country</span>
-              <input v-model="orgCountry" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-seal focus:outline-none" /></label>
-            <label class="text-sm md:col-span-2"><span class="text-mist">Address</span>
-              <input v-model="orgAddress" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-seal focus:outline-none" /></label>
-            <label class="text-sm md:col-span-2"><span class="text-mist">Email domains (comma-separated)</span>
-              <input v-model="domains" placeholder="company.example, company.co.example" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-seal focus:outline-none" /></label>
+            <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Legal name</span>
+              <input v-model="orgName" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
+            <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Country</span>
+              <input v-model="orgCountry" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
+            <label class="text-sm md:col-span-2"><span class="text-slate-500 dark:text-slate-400">Address</span>
+              <input v-model="orgAddress" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
+            <label class="text-sm md:col-span-2"><span class="text-slate-500 dark:text-slate-400">Email domains (comma-separated)</span>
+              <input v-model="domains" placeholder="company.example, company.co.example" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-brand-500 focus:outline-none" /></label>
           </div>
           <p v-if="domainList.length && !gateOk" class="mt-3 text-xs text-caution">
             Your identity account's email ({{ me?.email }}) must be verified on one of these domains before the signature unlocks.
@@ -117,47 +117,47 @@ async function sign() {
         </section>
 
         <section class="rounded-sm border border-rule bg-ground-2 p-6">
-          <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">signatory — you</h2>
+          <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">signatory</h2>
           <div class="mt-4 grid gap-3 md:grid-cols-2">
-            <label class="text-sm"><span class="text-mist">Name</span>
-              <input v-model="signatoryName" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-seal focus:outline-none" /></label>
-            <label class="text-sm"><span class="text-mist">Corporate email</span>
-              <input v-model="signatoryEmail" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-seal focus:outline-none" /></label>
-            <label class="text-sm"><span class="text-mist">Job title</span>
-              <input v-model="signatoryTitle" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-seal focus:outline-none" /></label>
-            <label class="text-sm"><span class="text-mist">GitHub username (optional — N/A allowed)</span>
-              <input v-model="signatoryGithub" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-seal focus:outline-none" /></label>
+            <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Name</span>
+              <input v-model="signatoryName" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
+            <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Corporate email</span>
+              <input v-model="signatoryEmail" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-brand-500 focus:outline-none" /></label>
+            <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Job title</span>
+              <input v-model="signatoryTitle" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
+            <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">GitHub username (optional — N/A allowed)</span>
+              <input v-model="signatoryGithub" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-brand-500 focus:outline-none" /></label>
           </div>
-          <p class="mt-3 text-xs leading-relaxed text-mist">
+          <p class="mt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
             Signing authority is your representation under OCLA §4 — the
             on-domain verified mailbox is the app's integrity gate.
           </p>
         </section>
 
         <section class="rounded-sm border border-rule bg-ground-2 p-6">
-          <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">point of contact</h2>
+          <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">point of contact</h2>
           <div class="mt-4 grid gap-3 md:grid-cols-3">
-            <label class="text-sm"><span class="text-mist">Name</span>
-              <input v-model="pocName" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-seal focus:outline-none" /></label>
-            <label class="text-sm"><span class="text-mist">Email <span v-if="!pocOnDomain && pocEmail" class="text-caution">(off-domain)</span></span>
-              <input v-model="pocEmail" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-seal focus:outline-none" /></label>
-            <label class="text-sm"><span class="text-mist">Phone</span>
-              <input v-model="pocPhone" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-seal focus:outline-none" /></label>
+            <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Name</span>
+              <input v-model="pocName" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
+            <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Email <span v-if="!pocOnDomain && pocEmail" class="text-caution">(off-domain)</span></span>
+              <input v-model="pocEmail" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-brand-500 focus:outline-none" /></label>
+            <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Phone</span>
+              <input v-model="pocPhone" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
           </div>
-          <p class="mt-3 text-xs leading-relaxed text-mist">
+          <p class="mt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
             The PoC manages the Schedule A and approves join requests. They receive an enrollment link bound to this email.
           </p>
         </section>
 
         <section class="rounded-sm border border-rule bg-ground-2 p-6">
-          <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">schedule A — designated employees</h2>
+          <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Schedule A — designated employees</h2>
           <textarea
             v-model="scheduleA"
             rows="5"
             placeholder="tj-91 | Johannes Roth | johannes.roth@mtg.example | Senior Software Developer"
-            class="mt-4 w-full rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-seal focus:outline-none"
+            class="mt-4 w-full rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-brand-500 focus:outline-none"
           ></textarea>
-          <p class="mt-2 text-xs leading-relaxed text-mist">
+          <p class="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
             One per line: <code>github_login | Name | email | Job title</code>. Every username is resolved
             live against GitHub — a typo here is a silently uncovered engineer, so typos refuse the signing.
           </p>
@@ -191,12 +191,12 @@ async function sign() {
         <div class="border-t border-rule pt-5">
           <button
             :disabled="!canSign || !gateOk"
-            class="w-full rounded-sm bg-seal px-4 py-3 font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            class="w-full rounded-sm bg-brand-500 px-4 py-3 font-semibold text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             @click="sign"
           >
             Execute the OCLA
           </button>
-          <p class="mt-2 text-center font-mono text-[11px] text-mist">· · · sign above the line · · ·</p>
+          <p class="mt-2 text-center font-mono text-[11px] text-slate-500 dark:text-slate-400">· · · sign above the line · · ·</p>
         </div>
       </aside>
     </div>
@@ -206,15 +206,15 @@ async function sign() {
     <div class="mx-auto max-w-lg rounded-sm border border-rule bg-ground-2 p-8 text-center">
       <span class="mx-auto block h-3 w-3 rounded-[2px] bg-seal" aria-hidden="true"></span>
       <h1 class="mt-4 font-serif text-2xl font-semibold">Executed.</h1>
-      <p class="mt-3 text-sm leading-relaxed text-mist">
+      <p class="mt-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
         <strong class="text-[#E8EAED]">{{ done.orgSlug }}</strong> is recorded with
         {{ done.coveredCount }} designated employee{{ done.coveredCount === 1 ? "" : "s" }}.
         Send your Point of Contact this enrollment link (it expires in 14 days and is bound to their email):
       </p>
       <code class="mt-4 block break-all rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-xs text-[#E8EAED]">{{ done.pocEnrollmentUrl }}</code>
-      <a href="/organizations" class="mt-6 inline-block text-sm text-seal hover:underline">Your organization is now listed →</a>
+      <a href="/organizations" class="mt-6 inline-block text-sm text-brand-600 hover:underline dark:text-brand-400">Your organization is now listed →</a>
     </div>
   </template>
 
-  <p v-else class="text-mist">{{ error }}</p>
+  <p v-else class="text-slate-500 dark:text-slate-400">{{ error }}</p>
 </template>

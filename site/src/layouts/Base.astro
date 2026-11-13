@@ -1,50 +1,52 @@
 ---
-import "@fontsource/inter/400.css";
-import "@fontsource/inter/500.css";
-import "@fontsource/inter/600.css";
-import "@fontsource/source-serif-4/400.css";
-import "@fontsource/source-serif-4/600.css";
-import "@fontsource/ibm-plex-mono/400.css";
-import "@fontsource/ibm-plex-mono/500.css";
 import "../styles/site.css";
-import HonestChip from "../islands/HonestChip.vue";
+import ThemeToggle from "../islands/ThemeToggle.vue";
 
 interface Props {
   title: string;
-  /** Instrument pages get the paper counterpoint in the header tick. */
+  /** Management consoles span wider. */
   wide?: boolean;
 }
 const { title, wide = false } = Astro.props;
 ---
 
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
+    <script is:inline>
+      // The theme decision runs before paint: the stored preference wins,
+      // and the system preference is the fallback (www.ribose.com pattern).
+      (function () {
+        var stored = localStorage.getItem("ribose-theme");
+        var dark = stored === "dark" || (stored === null && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
   </head>
-  <body class="min-h-screen bg-ink text-[#E8EAED] font-sans antialiased">
-    <header class="border-b border-rule">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <a href="/" class="flex items-center gap-2.5">
-          <span class="h-2.5 w-2.5 rounded-[2px] bg-seal" aria-hidden="true"></span>
-          <span class="font-serif text-lg font-semibold tracking-tight">Ribose CLA</span>
+  <body>
+    <header class="border-b border-line">
+      <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
+        <a href="/" class="flex items-baseline gap-3">
+          <span class="font-sans text-base font-bold tracking-tight text-ink dark:text-slate-100">Ribose</span>
+          <span class="border-l border-line pl-3 text-sm text-slate-500 dark:text-slate-400">Contribution Management</span>
         </a>
-        <nav class="flex items-center gap-6 text-sm text-mist">
-          <a href="/icla" class="hover:text-[#E8EAED]">Sign the ICLA</a>
-          <a href="/organizations" class="hover:text-[#E8EAED]">Organizations</a>
-          <a href="/agreements" class="hover:text-[#E8EAED]">My agreements</a>
+        <nav class="flex items-center gap-6 text-sm">
+          <a href="/icla" class="hover:text-brand-600 dark:hover:text-brand-400">Sign the ICLA</a>
+          <a href="/organizations" class="hover:text-brand-600 dark:hover:text-brand-400">Organization coverage</a>
+          <a href="/agreements" class="hover:text-brand-600 dark:hover:text-brand-400">My agreements</a>
+          <ThemeToggle client:load />
         </nav>
-        <HonestChip client:load />
       </div>
     </header>
     <main class={`mx-auto px-6 py-10 ${wide ? "max-w-6xl" : "max-w-3xl"}`}>
       <slot />
     </main>
-    <footer class="border-t border-rule">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 text-xs text-mist">
-        <span>Ribose CLA — BSD-3-Clause. The instrument is the record.</span>
-        <a class="hover:text-[#E8EAED]" href="https://github.com/riboseinc/cla">source</a>
+    <footer class="border-t border-line">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 text-xs text-slate-500 dark:text-slate-400">
+        <span>The Ribose Contribution Management service records contributor agreements and applies them to pull requests across the GitHub organizations of the Ribose estate.</span>
+        <a class="hover:text-brand-600 dark:hover:text-brand-400" href="https://github.com/riboseinc/cla">Source repository</a>
       </div>
     </footer>
   </body>

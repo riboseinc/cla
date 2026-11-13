@@ -26,11 +26,11 @@ const viewText = async (kind: string, version: string) => {
 <template>
   <p v-if="denied" class="text-mist">
     Sign in to see your agreements.
-    <a href="/signin/github" class="text-seal hover:underline">Sign in →</a>
+    <a href="/signin/github" class="text-brand-600 hover:underline dark:text-brand-400">Sign in →</a>
   </p>
 
   <template v-else-if="me">
-    <h1 class="font-serif text-2xl font-semibold">My agreements</h1>
+    <h1 class="font-sans text-2xl font-bold">Agreements and coverage of the signed-in contributor</h1>
     <p class="mt-2 text-sm text-mist">
       Bound identity:
       <span class="font-mono text-xs text-[#E8EAED]">{{ (me.bound as any)?.github_login }}</span>
@@ -38,25 +38,25 @@ const viewText = async (kind: string, version: string) => {
     </p>
 
     <section class="mt-8">
-      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">my ICLA signatures</h2>
+      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">Individual Contributor License Agreements</h2>
       <div v-if="(me.iclaSignatures as any[]).length === 0" class="mt-3 text-sm text-mist">
-        None yet — <a href="/icla" class="text-seal hover:underline">sign the ICLA</a> when ready.
+        No Individual Contributor License Agreement is recorded for this handle. The signing page records one. Use /icla.
       </div>
       <ul v-else class="mt-3 space-y-2">
         <li v-for="s in me.iclaSignatures as any[]" :key="s.edition.version + s.edition.textSha256" class="flex items-center justify-between rounded-sm border border-rule bg-ground-2 px-4 py-3 text-sm">
           <span>Individual CLA <span class="font-mono">v{{ s.edition.version }}</span></span>
           <span class="flex items-center gap-3">
             <span :class="s.current ? 'text-[#7FC497]' : 'text-caution'">{{ s.current ? "current" : "stale — re-sign" }}</span>
-            <button class="font-mono text-xs text-seal hover:underline" @click="viewText('icla', s.edition.version)">view text</button>
+            <button class="font-mono text-xs text-brand-600 hover:underline dark:text-brand-400" @click="viewText('icla', s.edition.version)">view text</button>
           </span>
         </li>
       </ul>
     </section>
 
     <section class="mt-8">
-      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">my organization coverages</h2>
+      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">Organization CLA coverage</h2>
       <div v-if="(me.oclaCoverages as any[]).length === 0" class="mt-3 text-sm text-mist">
-        None — <a href="/organizations" class="text-seal hover:underline">request coverage</a> under your employer's CLA.
+        No Organization CLA coverage is recorded for this handle. Coverage is requested on the organizations page, or the Point of Contact of the employer adds the handle directly.
       </div>
       <ul v-else class="mt-3 space-y-2">
         <li v-for="c in me.oclaCoverages as any[]" :key="c.org" class="flex items-center justify-between rounded-sm border border-rule bg-ground-2 px-4 py-3 text-sm">
@@ -67,7 +67,7 @@ const viewText = async (kind: string, version: string) => {
     </section>
 
     <section v-if="(me.attributions as any[]).length" class="mt-8">
-      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">my PR attributions</h2>
+      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">Elections recorded for pull requests</h2>
       <ul class="mt-3 space-y-2">
         <li v-for="a in me.attributions as any[]" :key="a.repo + a.pr" class="rounded-sm border border-rule bg-ground-2 px-4 py-3 font-mono text-xs text-mist">
           {{ a.repo }}#{{ a.pr }} → {{ a.agreement?.kind }}

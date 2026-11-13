@@ -73,27 +73,27 @@ async function remove(login: string) {
 </script>
 
 <template>
-  <h1 class="font-serif text-2xl font-semibold">Point-of-Contact console</h1>
+  <h1 class="font-sans text-2xl font-bold">Point-of-Contact console</h1>
 
   <p v-if="error" class="mt-4 rounded-sm border border-seal/50 bg-seal/10 px-4 py-3 text-sm text-[#E8A090]" role="alert">{{ error }}</p>
 
-  <template v-if="orgs === null && !error"><p class="mt-4 text-mist">Loading…</p></template>
+  <template v-if="orgs === null && !error"><p class="mt-4 text-slate-500 dark:text-slate-400">Loading…</p></template>
 
   <template v-else-if="orgs && !slug">
-    <p class="mt-4 text-sm text-mist">Organizations where you hold the admin role:</p>
+    <p class="mt-4 text-sm text-slate-500 dark:text-slate-400">Organizations where you hold the admin role:</p>
     <ul class="mt-4 space-y-2">
       <li v-for="o in orgs" :key="o.slug">
-        <a :href="`/admin-orgs/${o.slug}`" class="block rounded-sm border border-rule bg-ground-2 px-4 py-3 font-mono text-sm hover:border-seal/60">{{ o.slug }} →</a>
+        <a :href="`/admin-orgs/${o.slug}`" class="block rounded-sm border border-rule bg-ground-2 px-4 py-3 font-mono text-sm hover:border-brand-400">{{ o.slug }} →</a>
       </li>
     </ul>
-    <p v-if="orgs.length === 0" class="text-sm text-mist">No admin grants — enroll via the link from your organization's signatory.</p>
+    <p v-if="orgs.length === 0" class="text-sm text-slate-500 dark:text-slate-400">No admin grants — enroll via the link from your organization's signatory.</p>
   </template>
 
   <template v-else-if="data">
-    <p class="mt-2 font-mono text-sm text-mist">{{ slug }}</p>
+    <p class="mt-2 font-mono text-sm text-slate-500 dark:text-slate-400">{{ slug }}</p>
 
     <section class="mt-8">
-      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">pending join requests</h2>
+      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">pending join requests</h2>
       <ul class="mt-3 space-y-2">
         <li v-for="r in (data.pendingJoinRequests as any[])" :key="r.id" class="flex items-center justify-between rounded-sm border border-rule bg-ground-2 px-4 py-3 text-sm">
           <span><span class="font-mono">{{ r.login }}</span> — requested {{ String(r.requested_at).slice(0, 10) }}</span>
@@ -102,15 +102,15 @@ async function remove(login: string) {
             <button class="rounded-sm bg-[#3A2620] px-3 py-1.5 text-[#E8A090] hover:opacity-90" @click="decide(r.id, 'reject')">Reject</button>
           </span>
         </li>
-        <li v-if="(data.pendingJoinRequests as any[]).length === 0" class="text-sm text-mist">Nothing pending.</li>
+        <li v-if="(data.pendingJoinRequests as any[]).length === 0" class="text-sm text-slate-500 dark:text-slate-400">Nothing pending.</li>
       </ul>
     </section>
 
     <section class="mt-8">
-      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">effective schedule A</h2>
+      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">effective schedule A</h2>
       <ul class="mt-3 space-y-2">
         <li v-for="row in (data.effectiveScheduleA as any[])" :key="row.githubLogin" class="flex items-center justify-between rounded-sm border border-rule bg-ground-2 px-4 py-3 text-sm">
-          <span><span class="font-mono">{{ row.githubLogin }}</span> <span class="text-mist">{{ row.name || "" }}</span></span>
+          <span><span class="font-mono">{{ row.githubLogin }}</span> <span class="text-slate-500 dark:text-slate-400">{{ row.name || "" }}</span></span>
           <button class="text-xs text-[#E8A090] hover:underline" @click="remove(row.githubLogin)">remove</button>
         </li>
       </ul>
@@ -119,13 +119,13 @@ async function remove(login: string) {
         <input name="name" placeholder="name" class="w-44 rounded-sm border border-rule bg-ink px-3 py-2 text-sm focus:border-seal focus:outline-none" />
         <input name="email" placeholder="email" class="w-48 rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-seal focus:outline-none" />
         <input name="title" placeholder="title" class="w-40 rounded-sm border border-rule bg-ink px-3 py-2 text-sm focus:border-seal focus:outline-none" />
-        <button class="rounded-sm bg-seal px-4 py-2 text-sm font-medium text-white hover:opacity-90">Add (validated live)</button>
+        <button class="rounded-sm bg-brand-500 px-4 py-2 text-ink text-sm font-medium text-white hover:opacity-90">Add (validated live)</button>
       </form>
     </section>
 
     <section class="mt-8">
-      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-mist">modification history</h2>
-      <ul class="mt-3 space-y-1 font-mono text-xs text-mist">
+      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">modification history</h2>
+      <ul class="mt-3 space-y-1 font-mono text-xs text-slate-500 dark:text-slate-400">
         <li v-for="m in (data.mods as any[])">{{ String(m.recordedAt).slice(0, 10) }} — {{ m.add?.length ?? 0 }} added / {{ m.removeLogins?.length ?? 0 }} removed</li>
         <li v-if="(data.mods as any[]).length === 0">no modifications yet</li>
       </ul>
