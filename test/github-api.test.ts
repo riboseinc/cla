@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { generateKeyPairSync } from "node:crypto";
 import { GithubApi, type GithubApiDeps } from "../src/github/api";
 
 /**
@@ -73,6 +74,16 @@ describe("GithubApi: app JWT", () => {
 
     const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, Buffer.from(sig!, "base64url"), new TextEncoder().encode(`${h}.${p}`));
     expect(ok).toBe(true);
+  });
+
+  it("imports the PKCS#1 key GitHub's manifest conversion returns", async () => {
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const pem = privateKey.export({ type: "pkcs1", format: "pem" }).toString();
+    expect(pem).toContain("BEGIN RSA PRIVATE KEY");
+
+    const api = new GithubApi(memoryDeps({ privateKeyPem: pem }));
+    const jwt = await api.appJwt();
+    expect(jwt.split(".")).toHaveLength(3);
   });
 });
 
