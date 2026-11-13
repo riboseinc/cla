@@ -30,6 +30,9 @@ export async function buildStaffMap(
   const unresolved: string[] = [];
   if (!deps.serviceToken) return { staffMap, unresolved: [...logins] };
 
+  // Bare invocation: a global fetch called as a method is an illegal
+  // invocation in Workers.
+  const fetcher = deps.fetcher;
   const byLogin = new Map(links.map((l) => [l.githubLogin.toLowerCase(), l] as const));
   for (const raw of logins) {
     const login = raw.toLowerCase();
@@ -45,7 +48,7 @@ export async function buildStaffMap(
     }
     let entry: { org: string; role: string } | null = null;
     try {
-      const res = await deps.fetcher(
+      const res = await fetcher(
         `${deps.issuer.replace(/\/$/, "")}/api/service/subject-roles?upstream=github&id=${link.githubId}`,
         { headers: { Authorization: `Bearer ${deps.serviceToken}`, accept: "application/json" }, signal: AbortSignal.timeout(10_000) },
       );

@@ -54,10 +54,15 @@ const b64url = (bytes: Uint8Array): string => Buffer.from(bytes).toString("base6
 
 export class GithubApi {
   private readonly deps: GithubApiDeps;
+  private readonly fetcher: FetchLike;
   private keyPromise?: Promise<CryptoKey>;
 
   constructor(deps: GithubApiDeps) {
     this.deps = deps;
+    // Never invoke the injected fetcher as a method: Workers rejects a
+    // global fetch called with a foreign `this` ("Illegal invocation").
+    const fetcher = deps.fetcher;
+    this.fetcher = (url, init) => fetcher(url, init);
   }
 
   /** RS256 app JWT (iat back-dated 60s for drift, exp 10 min). */
@@ -77,7 +82,7 @@ export class GithubApi {
     const cached = this.deps.tokenCache.get(key);
     if (cached) return cached;
 
-    const res = await this.deps.fetcher(`https://api.github.com/app/installations/${installationId}/access_tokens`, {
+    const res = await this.fetcher(`https://api.github.com/app/installations/${installationId}/access_tokens`, {
       method: "POST",
       headers: { Authorization: `Bearer ${await this.appJwt()}`, Accept: "application/vnd.github+json" },
     });
@@ -111,7 +116,7 @@ export class GithubApi {
     }
     if (opts.body !== undefined) headers["Content-Type"] = "application/json";
 
-    const res = await this.deps.fetcher(`https://api.github.com${path}`, {
+    const res = await this.fetcher(`https://api.github.com${path}`, {
       method,
       headers,
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),

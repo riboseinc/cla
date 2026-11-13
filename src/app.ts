@@ -154,6 +154,7 @@ ${links}
       } catch (e) {
         // Fail-closed honesty: enforcement failures are returned as the
         // error they are — GitHub will redeliver; we never fake a pass.
+        console.error("webhook failure", (e as Error).stack ?? String(e));
         return c.json({ error: `enforcement failed: ${(e as Error).message}` }, 503);
       }
     });
