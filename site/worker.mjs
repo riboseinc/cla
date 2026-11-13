@@ -10,7 +10,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/healthz" || url.pathname.startsWith("/api/")) {
-      const inner = new Request(url.pathname.replace(/^\/api/, "") || "/", request);
+      const inner = new Request(new URL(url.pathname.replace(/^\/api/, "") || "/", url.origin), request);
       return apiApp.fetch(inner, env, ctx);
     }
     return astroWorker.fetch(request, env, ctx);
