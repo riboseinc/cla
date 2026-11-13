@@ -23,14 +23,27 @@ export type GithubApiDeps = {
 
 const TOKEN_TTL_SECONDS = 55 * 60; // installation tokens live 1h; re-mint early
 
+/** Wrap a PKCS#1 RSAPrivateKey in a PKCS#8 PrivateKeyInfo (GitHub's
+ *  manifest conversion returns PKCS#1; WebCrypto imports only PKCS#8). */
+function pkcs1ToPkcs8(pkcs1: Uint8Array): Uint8Array {
+  const len = (n: number): number[] =>
+    n < 0x80 ? [n] : n <= 0xff ? [0x81, n] : n <= 0xffff ? [0x82, (n >> 8) & 0xff, n & 0xff] : [0x83, (n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+  const version = [0x02, 0x01, 0x00];
+  const algorithm = [0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00];
+  const octet = [0x04, ...len(pkcs1.length), ...pkcs1];
+  const body = [...version, ...algorithm, ...octet];
+  return new Uint8Array([0x30, ...len(body.length), ...body]);
+}
+
 async function importPrivateKey(pem: string): Promise<CryptoKey> {
   const der = Buffer.from(
-    pem.replace(/-----(BEGIN|END) PRIVATE KEY-----/g, "").replace(/\s+/g, ""),
+    pem.replace(/-----(BEGIN|END) (RSA )?PRIVATE KEY-----/g, "").replace(/\s+/g, ""),
     "base64",
   );
+  const pkcs8 = pem.includes("RSA PRIVATE KEY") ? pkcs1ToPkcs8(new Uint8Array(der)) : new Uint8Array(der);
   return crypto.subtle.importKey(
     "pkcs8",
-    der,
+    pkcs8,
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
     ["sign"],
