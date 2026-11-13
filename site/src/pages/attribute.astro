@@ -1,0 +1,9 @@
+---
+export const prerender = true;
+import Base from "../layouts/Base.astro";
+import AttributeChoice from "../islands/AttributeChoice.vue";
+---
+
+<Base title="CLA attribution — Ribose CLA">
+  <AttributeChoice client:only="vue" />
+</Base>

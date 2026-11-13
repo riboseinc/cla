@@ -1,0 +1,9 @@
+---
+export const prerender = true;
+import Base from "../layouts/Base.astro";
+import MyAgreements from "../islands/MyAgreements.vue";
+---
+
+<Base title="My agreements — Ribose CLA">
+  <MyAgreements client:only="vue" />
+</Base>
