@@ -39,7 +39,7 @@ async function claim() {
 
 <template>
   <div class="mx-auto max-w-lg">
-    <h1 class="font-serif text-2xl font-semibold">Claim Point-of-Contact enrollment</h1>
+    <h1 class="font-sans text-2xl font-bold">Claiming a Point-of-Contact enrollment</h1>
     <p class="mt-3 text-sm leading-relaxed text-mist">
       This link was issued when your organization's OCLA was executed. It
       grants you the <span class="font-mono text-xs text-[#E8EAED]">org_admin</span>

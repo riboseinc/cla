@@ -9,3 +9,5 @@ config/cla.yaml
 .DS_Store
 site/.astro/
 site/dist/
+.astro/
+site/dist/
