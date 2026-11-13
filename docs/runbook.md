@@ -17,7 +17,7 @@ Sequence the stages; do not skip the backfill before the teeth (stage 5).
      - Administration: **NO ACCESS**
    - Subscribe to events: **Pull request**, **Issue comment** (installation / installation-repositories events are delivered to every App automatically and cannot be listed in a manifest)
    - Where can this app be installed: **Any account**
-2. Generate a private key (→ `APP_PRIVATE_KEY`), note the **App ID** (→ `GITHUB_APP_ID`) and the **client ID** (→ `GITHUB_APP_CLIENT_ID`).
+2. Generate a private key (→ `APP_PRIVATE_KEY`), note the **App ID** (→ `GITHUB_APP_ID`), the **client ID** (→ `GITHUB_APP_CLIENT_ID`) and the **client secret** (→ `GITHUB_APP_CLIENT_SECRET`). The GitHub App's client secret is a separate credential from the Ribose ID `OIDC_CLIENT_SECRET`.
 
 ## Stage 2 — Identity service (Ribose ID)
 
@@ -32,7 +32,7 @@ Sequence the stages; do not skip the backfill before the teeth (stage 5).
    - `cla-data` (records) — **CREATED 2026-11-12** with `cla-instance` + `cla-offline`; the MTG AG scan + first backfill record are committed. **Owner decision 2026-11-13: NO branch protection on these repos.** Append-only is the app's writing discipline + the audit trail; the records are small, legal, and visible in history.
    - `cla-offline` (evidence scans, checksummed)
 2. `wrangler d1 create cla-ephemeral`; apply migrations (`d1 migrations apply DB --remote`); KV for caches if desired.
-3. Worker `ribose-cla` secrets: `APP_PRIVATE_KEY`, `WEBHOOK_SECRET`, `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `SERVICE_TOKEN`, `OPS_TOKEN`, `MAIL_PROVIDER_URL`, `MAIL_PROVIDER_KEY`.
+3. Worker `ribose-cla` secrets: `APP_PRIVATE_KEY`, `WEBHOOK_SECRET`, `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `OIDC_CLIENT_SECRET`, `SERVICE_TOKEN`, `OPS_TOKEN`, `MAIL_PROVIDER_URL`, `MAIL_PROVIDER_KEY`.
 4. Instance repo: copy this repo's `wrangler.example.toml` + `config/cla.example.yaml` shape → real values (org roster, allowlists, `data_installation_id` — see stage 4); real legal texts; deploy deliberately (`wrangler deploy`), never from CI.
 5. DNS: `cla.ribose.com` → Worker custom domain; `notify.ribose.com` SPF/DKIM (subdomain only — the corporate mail domain's records stay untouched).
 

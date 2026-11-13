@@ -12,6 +12,7 @@ import { resetStaffCache } from "../src/identity/staff";
 const ENV = (pem: string, over: Record<string, unknown> = {}) => ({
   OIDC_CLIENT_SECRET: "op-secret",
   GITHUB_APP_CLIENT_ID: "Iv1.client",
+  GITHUB_APP_CLIENT_SECRET: "gh-secret",
   GITHUB_APP_ID: "1",
   APP_PRIVATE_KEY: pem,
   WEBHOOK_SECRET,

@@ -42,6 +42,7 @@ const memoryD1 = () => {
 const ENV = (pem: string, db?: ReturnType<typeof memoryD1>) => ({
   OIDC_CLIENT_SECRET: "op-secret",
   GITHUB_APP_CLIENT_ID: "Iv1.client",
+  GITHUB_APP_CLIENT_SECRET: "gh-secret",
   GITHUB_APP_ID: "1",
   APP_PRIVATE_KEY: pem,
   WEBHOOK_SECRET: "wh",

@@ -67,7 +67,7 @@ function githubFixture(fx: Fixture): void {
   fx.routes.set("/user", () => Response.json(GH_USER, { status: 200 }));
 }
 
-const ENV = (pem: string) => ({ OIDC_CLIENT_SECRET: "op-secret", GITHUB_APP_CLIENT_ID: "Iv1.client", GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem });
+const ENV = (pem: string) => ({ OIDC_CLIENT_SECRET: "op-secret", GITHUB_APP_CLIENT_ID: "Iv1.client", GITHUB_APP_CLIENT_SECRET: "gh-secret", GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem });
 
 function cookieOf(res: Response, name: string): string | undefined {
   return res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`))?.split(";")[0]?.split("=").slice(1).join("=");
@@ -110,7 +110,7 @@ describe("portal auth: the dual flow", () => {
     const flowPayload = Buffer.from(flowCookie.split(".")[0]!, "base64url").toString();
     expect(flowPayload).toContain("ghLogin"); // handle carried forward, signed
     const tokenCall = fx.calls.find((c) => c.url === "https://github.com/login/oauth/access_token");
-    expect(new URLSearchParams(tokenCall!.body as string).get("client_secret")).toBe("op-secret");
+    expect(new URLSearchParams(tokenCall!.body as string).get("client_secret")).toBe("gh-secret"); // the App's secret
   });
 
   it("full dual flow: both identities proven -> LINK record written + session established", async () => {
@@ -138,6 +138,10 @@ describe("portal auth: the dual flow", () => {
     const body4 = (await r4.json()) as Record<string, unknown>;
     expect(body4["bound"]).toEqual({ ribose_id_sub: "ribose-sub-1", github_login: "tj-91", github_id: GH_USER.id });
     expect(body4["email_verified"]).toBe(true);
+
+    // the identity round authenticates with the OIDC secret, never the GitHub one
+    const idTokenCall = fx.calls.find((c) => c.url === `${ISSUER}/token`);
+    expect(new URLSearchParams(idTokenCall!.body as string).get("client_secret")).toBe("op-secret");
   });
 
   it("fail-closed: state cookie tampering -> 400", async () => {
@@ -147,7 +151,13 @@ describe("portal auth: the dual flow", () => {
   });
 
   it("fail-closed: no identity secret -> the whole portal does not exist", async () => {
-    const app = createApp({ GITHUB_APP_CLIENT_ID: "Iv1.client" }, { fetcher: fx.fetcher });
+    const app = createApp({ GITHUB_APP_CLIENT_ID: "Iv1.client", GITHUB_APP_CLIENT_SECRET: "gh-secret" }, { fetcher: fx.fetcher });
+    expect((await app.request("/signin/github")).status).toBe(404);
+    expect((await app.request("/agreements")).status).toBe(404);
+  });
+
+  it("fail-closed: no GitHub App client secret -> the whole portal does not exist", async () => {
+    const app = createApp({ OIDC_CLIENT_SECRET: "op-secret", GITHUB_APP_CLIENT_ID: "Iv1.client" }, { fetcher: fx.fetcher });
     expect((await app.request("/signin/github")).status).toBe(404);
     expect((await app.request("/agreements")).status).toBe(404);
   });

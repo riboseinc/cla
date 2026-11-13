@@ -11,7 +11,8 @@ export type Env = {
   WEBHOOK_SECRET?: string;
   /** The GitHub App's OAuth client id + secret — the user-identity leg. */
   GITHUB_APP_CLIENT_ID?: string;
-  /** Ribose ID OIDC confidential-client secret — unset closes the portal. */
+  GITHUB_APP_CLIENT_SECRET?: string;
+  /** Ribose ID OIDC confidential-client secret (a DIFFERENT credential from the GitHub App's) — unset closes the portal. */
   OIDC_CLIENT_SECRET?: string;
   /** Staff console token — unset means /admin answers 404. */
   OPS_TOKEN?: string;
