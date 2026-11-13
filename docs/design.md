@@ -310,8 +310,9 @@ interfaces), evidence verifier, comment-command parser.
 1. **GitHub App**: create under `riboseinc` — name "Ribose CLA",
    homepage `https://cla.ribose.com`, webhook
    `https://cla.ribose.com/api/github/webhook`, events: pull_request,
-   issue_comment, installation, installation_repositories;
-   permissions: pull_requests: read, checks: write, contents: read,
+   issue_comment (installation events are delivered automatically);
+   permissions: pull_requests: read, contents: read, checks: write,
+   issues: write (PR comments + comment-command replies),
    administration: NONE. Note App ID + client_id; generate + download
    the private key; set the webhook secret.
 2. **GitHub OAuth App** (identity upstream): callback

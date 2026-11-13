@@ -12,10 +12,10 @@ Sequence the stages; do not skip the backfill before the teeth (stage 5).
    - Webhook — Active ✓ — URL: `https://cla.ribose.com/api/github/webhook`
    - Webhook secret: generate one (→ Worker secret `WEBHOOK_SECRET`)
    - Permissions:
-     - Repository: Pull requests **Read-only**, Contents **Read-only**, Checks **Read & write**
+     - Repository: Pull requests **Read-only**, Contents **Read-only**, Checks **Read & write**, Issues **Read & write** (the bot's PR comments and `@ribose-cla agree` replies)
      - Organization: (none required)
      - Administration: **NO ACCESS**
-   - Subscribe to events: **Pull request**, **Issue comment**, **Installation**, **Installation repositories**
+   - Subscribe to events: **Pull request**, **Issue comment** (installation / installation-repositories events are delivered to every App automatically and cannot be listed in a manifest)
    - Where can this app be installed: **Any account**
 2. Generate a private key (→ `APP_PRIVATE_KEY`), note the **App ID** (→ `GITHUB_APP_ID`) and the **client ID** (→ `GITHUB_APP_CLIENT_ID`).
 
