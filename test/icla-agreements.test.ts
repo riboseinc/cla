@@ -122,10 +122,11 @@ describe("edition text serving", () => {
     expect(typeof body["text"]).toBe("string");
   });
 
-  it("unknown versions and kinds 404; unauthenticated 401", async () => {
+  it("is public; unknown versions and kinds 404", async () => {
     const a = app();
+    const v = GENERATED_CONFIG.legal.current.icla;
+    expect((await a.request(`/agreements/text/icla/${v}`)).status).toBe(200);
     expect((await a.request("/agreements/text/icla/9.9", { headers: authed() })).status).toBe(404);
     expect((await a.request("/agreements/text/nope/1.0", { headers: authed() })).status).toBe(404);
-    expect((await a.request("/agreements/text/icla/1.0")).status).toBe(401);
   });
 });

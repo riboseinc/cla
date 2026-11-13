@@ -48,6 +48,17 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
     c.json({ service: "ribose-cla", status: "ok", kernel: KERNEL_VERSION, instance: GENERATED_CONFIG.instance.name }),
   );
 
+  // Deployed edition text is public: it is the agreement a signer must
+  // read BEFORE signing in (and the hash is displayed alongside it).
+  // No session, no portal secret required.
+  app.get("/agreements/text/:kind/:version", (c) => {
+    const kind = c.req.param("kind");
+    if (kind !== "icla" && kind !== "ocla") return c.json({ error: "unknown kind" }, 404);
+    const e = editionText(GENERATED_CONFIG, kind, c.req.param("version"));
+    if (!e) return c.json({ error: "no such edition" }, 404);
+    return c.json({ kind, version: c.req.param("version"), sha256: e.sha256, text: e.text });
+  });
+
   // The public landing: an HONEST statement of what is armed. Dark
   // surfaces say so — no fake links, no raw 404 for a human visitor.
   const portalArmed = Boolean(env.OIDC_CLIENT_SECRET && env.GITHUB_APP_CLIENT_ID && env.GITHUB_APP_CLIENT_SECRET);
@@ -235,16 +246,8 @@ ${links}
     });
 
     // The exact text of any edition ever deployed, hash-verified before
-    // serving, with the hash displayed (docs/design.md §3.10).
-    app.get("/agreements/text/:kind/:version", async (c) => {
-      if (!(await ses(c))) return c.json({ error: "sign in required" }, 401);
-      const kind = c.req.param("kind");
-      if (kind !== "icla" && kind !== "ocla") return c.json({ error: "unknown kind" }, 404);
-      const e = editionText(GENERATED_CONFIG, kind, c.req.param("version"));
-      if (!e) return c.json({ error: "no such edition" }, 404);
-      return c.json({ kind, version: c.req.param("version"), sha256: e.sha256, text: e.text });
-    });
-
+    // serving, with the hash displayed (docs/design.md §3.10). Public:
+    // served above the portal gate so the signing paper renders first.
     const iclaEdition = editionText(GENERATED_CONFIG, "icla", GENERATED_CONFIG.legal.current.icla)!;
 
     app.get("/icla", async (c) => {
