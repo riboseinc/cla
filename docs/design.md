@@ -259,10 +259,11 @@ revocation/{ts}/{id}.json  {target record, reason, by, at}
 ```
 
 Evidence pointers: `{repo, path, sha256}` — the kernel treats
-missing/mismatched evidence as unsigned + flagged. Branch protection
-on repos 3+4: app + staff team write only, no force-push, linear
-history. D1: sessions, nonces, pending join requests, burst counters,
-audit log, installation-token cache.
+missing/mismatched evidence as unsigned + flagged. **No branch
+protection on the data repos** (owner decision 2026-11-13): append-only
+is the app's writing discipline plus the D1 audit trail; corrections
+are new records by construction. D1: sessions, nonces, pending join
+requests, burst counters, audit log, installation-token cache.
 
 ## 9. Fail-closed postures (complete list)
 
@@ -319,9 +320,9 @@ interfaces), evidence verifier, comment-command parser.
    (app private key, webhook secret, OIDC client secret, service
    token, ops token, mail keys); custom domains cla.ribose.com +
    notify.ribose.com (SPF/DKIM on the subdomain only).
-4. **Repos**: create the private instance/data/offline repos (branch
-   protection per §8); install the App covering data + offline (that
-   installation id → config).
+4. **Repos**: create the private instance/data/offline repos (done
+   2026-11-12; no branch protection per the owner decision); install
+   the App covering data + offline (that installation id → config).
 5. **Install App org-wide** on each contributor org.
 6. **Identity service**: classify accounts staff vs contractor in
    admin; approve the subject-roles service API change.
