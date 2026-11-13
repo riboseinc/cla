@@ -1,0 +1,9 @@
+---
+export const prerender = true;
+import Base from "../../layouts/Base.astro";
+import CompletionRedirect from "../../islands/CompletionRedirect.vue";
+---
+
+<Base title="Complete your signature — Ribose CLA">
+  <CompletionRedirect client:only="vue" />
+</Base>

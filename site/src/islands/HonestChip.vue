@@ -1,0 +1,40 @@
+<script setup lang="ts">
+/** The honest-state chip: LIVE only when the real healthz says so —
+ *  a dark surface renders as dark, never as armed. */
+import { onMounted, ref } from "vue";
+
+type State = "checking" | "live" | "dark";
+const state = ref<State>("checking");
+const instance = ref("");
+
+onMounted(async () => {
+  try {
+    const res = await fetch("/api/healthz");
+    if (res.ok) {
+      const body = (await res.json()) as { status?: string; instance?: string };
+      if (body.status === "ok") {
+        state.value = "live";
+        instance.value = body.instance ?? "";
+      } else state.value = "dark";
+    } else state.value = "dark";
+  } catch {
+    state.value = "dark";
+  }
+});
+</script>
+
+<template>
+  <span
+    class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs"
+    :class="state === 'live' ? 'border-[#2E5B3D] text-[#7FC497]' : 'border-rule text-mist'"
+  >
+    <span
+      class="h-1.5 w-1.5 rounded-full"
+      :class="state === 'live' ? 'bg-[#43935F]' : 'bg-mist/50'"
+      aria-hidden="true"
+    ></span>
+    <template v-if="state === 'live'">operational{{ instance ? ` · ${instance}` : "" }}</template>
+    <template v-else-if="state === 'checking'">checking…</template>
+    <template v-else>awaiting connection</template>
+  </span>
+</template>

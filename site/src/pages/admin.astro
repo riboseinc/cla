@@ -1,0 +1,9 @@
+---
+export const prerender = true;
+import Base from "../layouts/Base.astro";
+import StaffConsole from "../islands/StaffConsole.vue";
+---
+
+<Base title="Staff console — Ribose CLA" wide>
+  <StaffConsole client:only="vue" />
+</Base>

@@ -1,0 +1,9 @@
+---
+export const prerender = false;
+import Base from "../../layouts/Base.astro";
+import PocConsole from "../../islands/PocConsole.vue";
+---
+
+<Base title="Point-of-Contact console — Ribose CLA" wide>
+  <PocConsole client:only="vue" />
+</Base>

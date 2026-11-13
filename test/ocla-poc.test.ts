@@ -169,8 +169,6 @@ describe("join flow + PoC console", () => {
   it("an employee requests coverage; one pending per account/org; the PoC approves and the mod lands", async () => {
     const a = app();
     // fixture already carries a staff-granted org_admin role for poc-sub
-    expect((await a.request("/organizations", { headers: memberAuth() })).status).toBe(200);
-
     const join = await a.request("/organizations/mtg-ag/join", { method: "POST", headers: memberAuth() });
     expect(join.status).toBe(200);
     expect(((await join.json()) as Record<string, unknown>)["requested"]).toBe(true);

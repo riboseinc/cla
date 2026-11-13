@@ -7,3 +7,5 @@ src/generated/
 config/cla.yaml
 *.log
 .DS_Store
+site/.astro/
+site/dist/
