@@ -26,11 +26,11 @@ onMounted(async () => {
 <template>
   <span
     class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs"
-    :class="state === 'live' ? 'border-[#2E5B3D] text-[#7FC497]' : 'border-rule text-mist'"
+    :class="state === 'live' ? 'border-[#2E5B3D] text-brand-700 dark:text-brand-400' : 'border-rule text-slate-500 dark:text-slate-400'"
   >
     <span
       class="h-1.5 w-1.5 rounded-full"
-      :class="state === 'live' ? 'bg-[#43935F]' : 'bg-mist/50'"
+      :class="state === 'live' ? 'bg-brand-500' : 'bg-slate-400 dark:bg-slate-600'"
       aria-hidden="true"
     ></span>
     <template v-if="state === 'live'">The service is operational{{ instance ? ` for ${instance}` : "" }}</template>

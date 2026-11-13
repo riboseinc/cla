@@ -11,5 +11,5 @@ onMounted(() => {
 </script>
 
 <template>
-  <p class="text-mist">Continuing to the signature line…</p>
+  <p class="text-slate-500 dark:text-slate-400">Continuing to the signature line…</p>
 </template>
