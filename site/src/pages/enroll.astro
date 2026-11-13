@@ -1,0 +1,9 @@
+---
+export const prerender = true;
+import Base from "../layouts/Base.astro";
+import EnrollClaim from "../islands/EnrollClaim.vue";
+---
+
+<Base title="Claim Point-of-Contact enrollment — Ribose CLA">
+  <EnrollClaim client:only="vue" />
+</Base>
