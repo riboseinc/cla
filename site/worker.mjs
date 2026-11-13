@@ -24,6 +24,12 @@ export default {
       return apiApp.fetch(request, env, ctx);
     }
 
+    // The agreement texts are public documents with clean URLs (the
+    // footer links to them directly).
+    if (url.pathname.startsWith("/agreements/text/")) {
+      return apiApp.fetch(request, env, ctx);
+    }
+
     // The site's protocol calls (/api/icla/sign, /api/agreements, ...)
     // map to the Hono routes with /api stripped.
     if (url.pathname.startsWith("/api/")) {

@@ -59,24 +59,24 @@ async function elect() {
   <div class="mx-auto max-w-lg">
     <h1 class="font-sans text-2xl font-bold">Stating the agreement that covers a contribution</h1>
 
-    <p v-if="state === 'checking'" class="mt-3 text-mist">Validating the link…</p>
+    <p v-if="state === 'checking'" class="mt-3 text-slate-500 dark:text-slate-400">Validating the link…</p>
 
     <template v-else-if="state === 'signin'">
-      <p class="mt-3 text-sm leading-relaxed text-mist">
+      <p class="mt-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
         Sign in with GitHub (the same account that authored the PR), and
         you'll return here to complete the election.
       </p>
       <a
         :href="`/signin/github`"
-        class="mt-6 inline-block rounded-sm bg-[#E8EAED] px-4 py-3 font-medium text-ink hover:bg-white"
+        class="mt-6 inline-block rounded-sm bg-ink dark:bg-white px-4 py-3 font-medium text-ink hover:bg-white"
         @click="sessionStorage.setItem('cla_return', window.location.search)"
       >Sign in with GitHub</a>
     </template>
 
-    <div v-else-if="state === 'recorded'" class="mt-6 rounded-sm border border-[#2E5B3D] bg-[#12241A] p-5 text-sm text-[#7FC497]">
+    <div v-else-if="state === 'recorded'" class="mt-6 rounded-sm border border-[#2E5B3D] bg-[#12241A] p-5 text-sm text-brand-700 dark:text-brand-400">
       Recorded. Your pull request re-checks immediately and turns green.
     </div>
-    <div v-else-if="state === 'error'" class="mt-6 rounded-sm border border-seal/50 bg-seal/10 p-5 text-sm text-[#E8A090]" role="alert">
+    <div v-else-if="state === 'error'" class="mt-6 rounded-sm border border-accent-600/40 bg-accent-600/10 p-5 text-sm text-accent-600 dark:text-accent-400" role="alert">
       {{ message }}
     </div>
   </div>
