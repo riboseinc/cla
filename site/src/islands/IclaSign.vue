@@ -150,6 +150,15 @@ const canSign = computed(() => terms.value && past.value !== "unset");
       <aside class="space-y-6">
         <div class="space-y-3 text-sm">
           <label class="block">
+            <span class="text-mist">GitHub username</span>
+            <input
+              :value="bound?.github_login"
+              type="text"
+              readonly
+              class="mt-1 w-full rounded-sm border border-rule bg-ground-2 px-3 py-2 font-mono text-sm text-[#E8EAED] opacity-80"
+            />
+          </label>
+          <label class="block">
             <span class="text-mist">Name</span>
             <input v-model="name" type="text" class="mt-1 w-full rounded-sm border border-rule bg-ground-2 px-3 py-2 text-[#E8EAED] focus:border-seal focus:outline-none" />
           </label>
