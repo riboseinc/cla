@@ -313,7 +313,9 @@ interfaces), evidence verifier, comment-command parser.
    issue_comment (installation events are delivered automatically);
    permissions: pull_requests: read, contents: read, checks: write,
    issues: write (PR comments + comment-command replies),
-   administration: NONE. Note App ID + client_id; generate + download
+   administration: NONE. Note App ID + client_id + client_secret
+   (→ `GITHUB_APP_CLIENT_SECRET`; the Ribose ID `OIDC_CLIENT_SECRET`
+   is a different credential); generate + download
    the private key; set the webhook secret.
 2. **GitHub OAuth App** (identity upstream): callback
    `https://id.ribose.com/api/upstream/github/callback`; then
@@ -321,9 +323,10 @@ interfaces), evidence verifier, comment-command parser.
    `UPSTREAM_GITHUB_CLIENT_SECRET` via wrangler secret; deliberate
    deploy; verify JIT sign-in.
 3. **Cloudflare**: Worker `ribose-cla`, D1, KV (token cache), secrets
-   (app private key, webhook secret, OIDC client secret, service
-   token, ops token, mail keys); custom domains cla.ribose.com +
-   notify.ribose.com (SPF/DKIM on the subdomain only).
+   (app private key, webhook secret, GitHub App client id + secret,
+   Ribose ID OIDC client secret, service token, ops token, mail keys);
+   custom domains cla.ribose.com + notify.ribose.com (SPF/DKIM on the
+   subdomain only).
 4. **Repos**: create the private instance/data/offline repos (done
    2026-11-12; no branch protection per the owner decision); install
    the App covering data + offline (that installation id → config).

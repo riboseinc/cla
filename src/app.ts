@@ -127,7 +127,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
   }
 
   // ---- Portal (fail-closed: identity secret + GitHub client id configured) ----
-  if (env.OIDC_CLIENT_SECRET && env.GITHUB_APP_CLIENT_ID) {
+  if (env.OIDC_CLIENT_SECRET && env.GITHUB_APP_CLIENT_ID && env.GITHUB_APP_CLIENT_SECRET) {
     const cookieOpts = (maxAge: number) => `; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
 
     app.get("/signin/github", async (c) => {
@@ -144,7 +144,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       if (!flow || flow["flow"] !== "github" || !code || !state || state !== flow["state"]) {
         return c.json({ error: "invalid or expired sign-in state" }, 400);
       }
-      const token = await exchangeGithubCode(env.GITHUB_APP_CLIENT_ID!, env.OIDC_CLIENT_SECRET!, code, `${portalBase}/callback/github`, state, fetcher);
+      const token = await exchangeGithubCode(env.GITHUB_APP_CLIENT_ID!, env.GITHUB_APP_CLIENT_SECRET!, code, `${portalBase}/callback/github`, state, fetcher);
       const user = await fetchGithubUser(token, fetcher);
       // Handle proven — now the identity round (JIT via GitHub upstream).
       const discovery = await discover(identity.issuer, fetcher, now());
