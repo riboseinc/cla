@@ -50,7 +50,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
 
   // The public landing: an HONEST statement of what is armed. Dark
   // surfaces say so — no fake links, no raw 404 for a human visitor.
-  const portalArmed = Boolean(env.OIDC_CLIENT_SECRET && env.GITHUB_APP_CLIENT_ID);
+  const portalArmed = Boolean(env.OIDC_CLIENT_SECRET && env.GITHUB_APP_CLIENT_ID && env.GITHUB_APP_CLIENT_SECRET);
   const enforcementArmed = Boolean(env.WEBHOOK_SECRET && env.APP_PRIVATE_KEY && env.GITHUB_APP_ID);
   app.get("/", (c) => {
     const name = GENERATED_CONFIG.instance.name;
