@@ -225,6 +225,11 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
 <pre id="cla-text">${iclaEdition.text.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>
 <p>sha256: <code>${iclaEdition.sha256}</code></p>
 <form method="post" action="/icla/sign">
+<h2>Your details</h2>
+<label>Full name <input name="name" placeholder="Full legal name" required></label><br>
+<label>Email <input name="email" type="email" value="${session.email ?? ""}" required></label><br>
+<label>Alternate email (optional) <input name="alt_email" type="email"></label><br>
+<label>Country <input name="country" placeholder="Country of residence" required></label><br>
 <input type="hidden" name="csrf" value="${csrf}">
 <label><input type="checkbox" name="terms" required> I agree to the terms above (edition ${GENERATED_CONFIG.legal.current.icla}, sha256 ${iclaEdition.sha256})</label><br>
 <label><input type="checkbox" name="past" value="yes" required> This agreement includes ALL my previous contributions to Ribose projects</label><br>

@@ -21,9 +21,12 @@ export async function appendRecord(deps: WriteDeps, namespace: string, record: R
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const path = `${namespace}/${yyyy}/${mm}/${id}.json`;
+  // The id is part of the record, not just its filename: the loader
+  // identifies records (and revocations target them) by this field.
+  const stored = { ...record, id: (record["id"] as string | undefined) ?? id };
   const body = {
     message: `record: ${namespace}/${id}`,
-    content: Buffer.from(JSON.stringify(record, null, 2), "utf8").toString("base64"),
+    content: Buffer.from(JSON.stringify(stored, null, 2), "utf8").toString("base64"),
   };
   const res = await deps.api.request(deps.installationId, "PUT", `/repos/${deps.dataRepo}/contents/${path}`, { body });
   if (res.status !== 201) throw new Error(`record write failed (${namespace}): ${res.status}`);

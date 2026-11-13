@@ -41,6 +41,9 @@ describe("ICLA signing", () => {
     expect(html).toContain("ALL my previous contributions");
     expect(html).toContain('name="terms" required');
     expect(html).toContain('name="past"');
+    expect(html).toContain('name="name"');
+    expect(html).toContain('name="email"');
+    expect(html).toContain('name="country"');
     expect(html).toContain(`value="${csrf}"`);
   });
 
