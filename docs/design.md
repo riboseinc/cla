@@ -311,9 +311,10 @@ interfaces), evidence verifier, comment-command parser.
    homepage `https://cla.ribose.com`, webhook
    `https://cla.ribose.com/api/github/webhook`, events: pull_request,
    issue_comment (installation events are delivered automatically);
-   permissions: pull_requests: read, contents: read, checks: write,
-   issues: write (PR comments + comment-command replies),
-   administration: NONE. Note App ID + client_id + client_secret
+   permissions: pull_requests: write (PR comments + comment-command
+   replies), contents: read, checks: write, issues: read (the
+   issue_comment subscription), administration: NONE. Note App ID +
+   client_id + client_secret
    (→ `GITHUB_APP_CLIENT_SECRET`; the Ribose ID `OIDC_CLIENT_SECRET`
    is a different credential); generate + download
    the private key; set the webhook secret.

@@ -12,7 +12,7 @@ Sequence the stages; do not skip the backfill before the teeth (stage 5).
    - Webhook — Active ✓ — URL: `https://cla.ribose.com/api/github/webhook`
    - Webhook secret: generate one (→ Worker secret `WEBHOOK_SECRET`)
    - Permissions:
-     - Repository: Pull requests **Read-only**, Contents **Read-only**, Checks **Read & write**, Issues **Read & write** (the bot's PR comments and `@ribose-cla agree` replies)
+     - Repository: Pull requests **Read & write** (the bot's PR comments and `@ribose-cla agree` replies), Contents **Read-only**, Checks **Read & write**, Issues **Read-only** (the `issue_comment` subscription). GitHub's runtime requires Pull requests write for PR timeline comments; Issues write alone returns 403.
      - Organization: (none required)
      - Administration: **NO ACCESS**
    - Subscribe to events: **Pull request**, **Issue comment** (installation / installation-repositories events are delivered to every App automatically and cannot be listed in a manifest)
