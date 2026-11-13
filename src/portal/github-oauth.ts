@@ -32,7 +32,7 @@ export async function exchangeGithubCode(
   if (state) body.set("state", state);
   const res = await fetcher("https://github.com/login/oauth/access_token", {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json", "user-agent": "ribose-cla" },
     body,
     signal: AbortSignal.timeout(10_000),
   });
@@ -46,7 +46,7 @@ export async function exchangeGithubCode(
 
 export async function fetchGithubUser(userToken: string, fetcher: Fetcher): Promise<GithubUser> {
   const res = await fetcher("https://api.github.com/user", {
-    headers: { Authorization: `Bearer ${userToken}`, accept: "application/vnd.github+json" },
+    headers: { Authorization: `Bearer ${userToken}`, accept: "application/vnd.github+json", "user-agent": "ribose-cla" },
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`the GitHub user endpoint answered ${res.status}`);
