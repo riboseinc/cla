@@ -7,8 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `riboseinc/cla` — the Ribose CLA system: a generalized, instance-agnostic
 GitHub App (Cloudflare Worker + Hono + D1) enforcing Contributor License
 Agreements across all Ribose GitHub orgs. Public, BSD-3-Clause. The
-complete design is `docs/design.md`; implementation tracking is THIS
-repo's issues (master: #16). **This project is worked entirely in this
+complete design and the deployment runbook live in the private instance
+repository (`ribosei/cla-instance`, estate members only); implementation
+tracking is THIS repo's issues (master: #16). **This project is worked entirely in this
 repo's issues — it is separate from any external estate ledger.**
 
 ## The gates — all green before any change is done
@@ -49,4 +50,4 @@ Single file/case: `npm test -- test/foo.test.ts`, `npm test -- -t "name"`.
    PRs: at most ONE pull request open at a time** (open the next only
    after the previous merges); never commit to main; CI runs the gates
    and never deploys; deploys are deliberate owner actions from the
-   instance repo. Owner runbook: `docs/runbook.md`.
+   instance repo. Owner runbook: `ribosei/cla-instance` → `docs/runbook.md`.
