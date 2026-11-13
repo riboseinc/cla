@@ -8,7 +8,7 @@ import tailwindcss from "@tailwindcss/vite";
 // protocol surface keeps its routes and its spec suite untouched).
 export default defineConfig({
   output: "server",
-  adapter: cloudflare(),
+  adapter: cloudflare({ sessions: false, imageService: "passthrough" }),
   vite: {
     plugins: [tailwindcss()],
     server: { fs: { allow: ["../.."] } },
