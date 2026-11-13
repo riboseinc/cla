@@ -5,6 +5,7 @@ import { computed, onMounted, ref } from "vue";
 
 type Phase = "checking" | "signin" | "form" | "done" | "error";
 const phase = ref<Phase>("checking");
+const dark = ref(false);
 const bound = ref<{ github_login: string; email: string | null; email_verified: boolean } | null>(null);
 const edition = ref<{ version: string; sha256: string; text: string } | null>(null);
 const terms = ref(false);
@@ -19,17 +20,41 @@ const signedRecord = ref("");
 onMounted(async () => {
   const editions = await fetch("/api/editions").then((r) => r.json());
   const current = editions.icla;
+
+  // The edition text is public: render the paper before sign-in.
+  const text = await fetch(`/api/agreements/text/icla/${current.version}`);
+  if (text.ok) edition.value = await text.json();
+
   const me = await fetch("/api/agreements");
-  if (me.status === 401) {
+  if (me.status === 404) {
+    // The portal is not armed yet: the paper is readable, signing is not.
+    dark.value = true;
     phase.value = "signin";
-    edition.value = await fetch(`/api/agreements/text/icla/${current.version}`).then((r) => r.json());
     return;
   }
-  bound.value = (await me.json()) as { github_login: string; email: string | null; email_verified: boolean };
+  if (me.status === 401) {
+    phase.value = "signin";
+    return;
+  }
+  if (!me.ok) {
+    error.value = `The portal answered ${me.status}.`;
+    phase.value = "error";
+    return;
+  }
+
+  // /agreements returns {bound:{...}, email, email_verified, ...}
+  const body = (await me.json()) as {
+    bound?: { github_login?: string };
+    email?: string | null;
+    email_verified?: boolean;
+  };
+  bound.value = {
+    github_login: body.bound?.github_login ?? "",
+    email: body.email ?? null,
+    email_verified: body.email_verified === true,
+  };
   name.value = bound.value.github_login;
   email.value = bound.value.email ?? "";
-  const text = await fetch(`/api/agreements/text/icla/${current.version}`).then((r) => r.json());
-  edition.value = text;
   phase.value = "form";
 });
 
@@ -75,22 +100,28 @@ const canSign = computed(() => terms.value && past.value !== "unset");
       </div>
       <aside class="space-y-4">
         <h1 class="font-serif text-2xl font-semibold">Sign the ICLA</h1>
-        <p class="text-sm leading-relaxed text-mist">
-          First, prove your GitHub handle. You'll come straight back to
-          this signature line.
+        <p v-if="dark" class="text-sm leading-relaxed text-mist">
+          The signing portal is not open yet. The agreement text is shown
+          for review; sign-in opens once the portal is connected.
         </p>
-        <a
-          href="/signin/github"
-          class="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-[#E8EAED] px-4 py-3 font-medium text-ink transition-colors hover:bg-white"
-        >
-          <svg viewBox="0 0 16 16" class="h-5 w-5 fill-current" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-          Sign in with GitHub
-        </a>
-        <p class="text-xs leading-relaxed text-mist">
-          You'll pass through your Ribose ID (created automatically if
-          you don't have one) — that's what binds this signature to a
-          durable identity, not just a handle.
-        </p>
+        <template v-else>
+          <p class="text-sm leading-relaxed text-mist">
+            First, prove your GitHub handle. You'll come straight back to
+            this signature line.
+          </p>
+          <a
+            href="/signin/github"
+            class="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-[#E8EAED] px-4 py-3 font-medium text-ink transition-colors hover:bg-white"
+          >
+            <svg viewBox="0 0 16 16" class="h-5 w-5 fill-current" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+            Sign in with GitHub
+          </a>
+          <p class="text-xs leading-relaxed text-mist">
+            You'll pass through your Ribose ID (created automatically if
+            you don't have one) — that's what binds this signature to a
+            durable identity, not just a handle.
+          </p>
+        </template>
       </aside>
     </div>
   </template>
