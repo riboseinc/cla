@@ -165,7 +165,7 @@ export async function verifyIdToken(
 
   const signature = b64UrlDecodeBytes(signatureRaw);
   const signed = new TextEncoder().encode(`${headerRaw}.${payloadRaw}`);
-  const normalized = derSignatureToRawEs256(signature) ?? signature;
+  const normalized: Uint8Array<ArrayBuffer> = (derSignatureToRawEs256(signature) ?? signature) as Uint8Array<ArrayBuffer>;
   let verified = false;
   for (const key of candidates) {
     const cryptoKey = await crypto.subtle.importKey("jwk", key as JsonWebKey, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);

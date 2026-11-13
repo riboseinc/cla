@@ -1,0 +1,67 @@
+---
+export const prerender = true;
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Ribose CLA">
+  <section class="py-10">
+    <p class="font-mono text-xs uppercase tracking-[0.2em] text-mist">Contributor License Agreements</p>
+    <h1 class="mt-4 max-w-2xl font-serif text-4xl font-semibold leading-tight md:text-5xl">
+      Contributions to Ribose stand on a
+      <span class="text-seal">signed instrument</span>.
+    </h1>
+    <p class="mt-6 max-w-2xl text-lg leading-relaxed text-mist">
+      You know exactly which edition you agreed to — the text is pinned
+      by its hash, and every record is public to you forever. Sign in
+      thirty seconds, or join your employer's Organization CLA.
+    </p>
+  </section>
+
+  <section class="grid gap-4 border-t border-rule pt-10 md:grid-cols-3">
+    <a
+      href="/icla"
+      class="group rounded-sm border border-rule bg-ground-2 p-6 transition-colors hover:border-seal/60"
+    >
+      <p class="font-mono text-xs uppercase tracking-[0.18em] text-mist">individual</p>
+      <h2 class="mt-3 font-serif text-xl font-semibold">Sign the ICLA</h2>
+      <p class="mt-2 text-sm leading-relaxed text-mist">
+        Covers you personally — present and future contributions, with
+        an explicit election to include your past work.
+      </p>
+      <span class="mt-4 inline-block text-sm text-seal group-hover:underline">Sign above the line →</span>
+    </a>
+    <a
+      href="/organizations"
+      class="group rounded-sm border border-rule bg-ground-2 p-6 transition-colors hover:border-seal/60"
+    >
+      <p class="font-mono text-xs uppercase tracking-[0.18em] text-mist">organization</p>
+      <h2 class="mt-3 font-serif text-xl font-semibold">Join your employer's CLA</h2>
+      <p class="mt-2 text-sm leading-relaxed text-mist">
+        If your company executed an Organization CLA, request Schedule A
+        coverage — your Point of Contact approves.
+      </p>
+      <span class="mt-4 inline-block text-sm text-seal group-hover:underline">Find your organization →</span>
+    </a>
+    <a
+      href="/sign-ocla"
+      class="group rounded-sm border border-rule bg-ground-2 p-6 transition-colors hover:border-seal/60"
+    >
+      <p class="font-mono text-xs uppercase tracking-[0.18em] text-mist">for companies</p>
+      <h2 class="mt-3 font-serif text-xl font-semibold">Execute an OCLA</h2>
+      <p class="mt-2 text-sm leading-relaxed text-mist">
+        Your organization signs once, declares its email domains, and
+        manages its own authorized contributors.
+      </p>
+      <span class="mt-4 inline-block text-sm text-seal group-hover:underline">Execute an OCLA →</span>
+    </a>
+  </section>
+
+  <section class="mt-12 border-t border-rule pt-8">
+    <p class="max-w-2xl font-serif text-lg leading-relaxed text-mist">
+      Already contributed and seeing the check on your pull request?
+      Comment <code class="rounded bg-ground-2 px-1.5 py-0.5 font-mono text-sm text-[#E8EAED]">@ribose-cla agree</code>
+      and follow the link — the comment counts, the record keeps every
+      field.
+    </p>
+  </section>
+</Base>

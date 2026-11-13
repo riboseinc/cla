@@ -1,0 +1,9 @@
+---
+export const prerender = true;
+import Base from "../layouts/Base.astro";
+import JoinOrg from "../islands/JoinOrg.vue";
+---
+
+<Base title="Join your organization's CLA — Ribose CLA">
+  <JoinOrg client:only="vue" />
+</Base>

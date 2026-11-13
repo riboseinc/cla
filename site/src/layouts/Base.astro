@@ -1,0 +1,51 @@
+---
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/600.css";
+import "@fontsource/source-serif-4/400.css";
+import "@fontsource/source-serif-4/600.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "../styles/site.css";
+import HonestChip from "../islands/HonestChip.vue";
+
+interface Props {
+  title: string;
+  /** Instrument pages get the paper counterpoint in the header tick. */
+  wide?: boolean;
+}
+const { title, wide = false } = Astro.props;
+---
+
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body class="min-h-screen bg-ink text-[#E8EAED] font-sans antialiased">
+    <header class="border-b border-rule">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <a href="/" class="flex items-center gap-2.5">
+          <span class="h-2.5 w-2.5 rounded-[2px] bg-seal" aria-hidden="true"></span>
+          <span class="font-serif text-lg font-semibold tracking-tight">Ribose CLA</span>
+        </a>
+        <nav class="flex items-center gap-6 text-sm text-mist">
+          <a href="/icla" class="hover:text-[#E8EAED]">Sign the ICLA</a>
+          <a href="/organizations" class="hover:text-[#E8EAED]">Organizations</a>
+          <a href="/agreements" class="hover:text-[#E8EAED]">My agreements</a>
+        </nav>
+        <HonestChip client:load />
+      </div>
+    </header>
+    <main class={`mx-auto px-6 py-10 ${wide ? "max-w-6xl" : "max-w-3xl"}`}>
+      <slot />
+    </main>
+    <footer class="border-t border-rule">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 text-xs text-mist">
+        <span>Ribose CLA — BSD-3-Clause. The instrument is the record.</span>
+        <a class="hover:text-[#E8EAED]" href="https://github.com/riboseinc/cla">source</a>
+      </div>
+    </footer>
+  </body>
+</html>

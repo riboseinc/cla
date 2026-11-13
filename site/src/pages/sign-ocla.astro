@@ -1,0 +1,9 @@
+---
+export const prerender = true;
+import Base from "../layouts/Base.astro";
+import OclaSign from "../islands/OclaSign.vue";
+---
+
+<Base title="Execute an Organization CLA — Ribose CLA" wide>
+  <OclaSign client:only="vue" />
+</Base>

@@ -2,7 +2,7 @@
   "name": "ribose-cla",
   "version": "0.1.0",
   "private": true,
-  "description": "Ribose CLA — Contributor License Agreement enforcement for the Ribose GitHub estate (GitHub App)",
+  "description": "Ribose CLA \u2014 Contributor License Agreement enforcement for the Ribose GitHub estate (GitHub App)",
   "type": "module",
   "repository": {
     "type": "git",
@@ -12,14 +12,18 @@
     "node": ">=22"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "site"
   ],
   "scripts": {
     "gen": "tsx scripts/gen.ts",
     "typecheck": "npm run gen && tsc --noEmit",
     "test": "npm run gen && vitest run",
-    "build": "npm run gen && wrangler deploy --dry-run --config wrangler.example.toml",
-    "dev": "npm run gen && wrangler dev --config wrangler.example.toml"
+    "build": "npm run gen && npm run build -w @riboseinc/cla-site && wrangler deploy --dry-run --config wrangler.example.toml",
+    "dev": "npm run gen && wrangler dev --config wrangler.example.toml",
+    "site:dev": "npm run dev -w @riboseinc/cla-site",
+    "site:build": "npm run build -w @riboseinc/cla-site",
+    "site:check": "npm run check -w @riboseinc/cla-site"
   },
   "dependencies": {
     "hono": "^4.13.0",

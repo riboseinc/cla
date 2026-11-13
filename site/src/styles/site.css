@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+/* "The executed instrument" — design tokens (docs/design, site brief) */
+@theme {
+  --color-ink: #101418;        /* page ground */
+  --color-ground-2: #171C22;   /* raised surfaces */
+  --color-paper: #F6F3EC;      /* the instrument panel — the only light surface */
+  --color-paper-ink: #1E242B;  /* text on paper */
+  --color-seal: #B8452E;       /* sealing wax — armed/signed/the brand tick */
+  --color-rule: #262D35;       /* hairlines */
+  --color-mist: #98A2AD;       /* muted text */
+  --color-ok: #43935F;
+  --color-caution: #B98F2C;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}

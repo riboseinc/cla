@@ -36,10 +36,43 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
   const portalBase = `https://${GENERATED_CONFIG.instance.portalHost}`;
   const app = new Hono<{ Bindings: Env }>();
 
+  // Current edition pointers (public — versions + hashes only, never
+  // the signer record): the site islands render the instrument from here.
+  app.get("/editions", (c) => {
+    const e = kernelEditions(GENERATED_CONFIG);
+    return c.json({ icla: e.icla, ocla: e.ocla });
+  });
+
   // Status-service probe target: content-assertable, cheap, honest.
   app.get("/healthz", (c) =>
     c.json({ service: "ribose-cla", status: "ok", kernel: KERNEL_VERSION, instance: GENERATED_CONFIG.instance.name }),
   );
+
+  // The public landing: an HONEST statement of what is armed. Dark
+  // surfaces say so — no fake links, no raw 404 for a human visitor.
+  const portalArmed = Boolean(env.OIDC_CLIENT_SECRET && env.GITHUB_APP_CLIENT_ID);
+  const enforcementArmed = Boolean(env.WEBHOOK_SECRET && env.APP_PRIVATE_KEY && env.GITHUB_APP_ID);
+  app.get("/", (c) => {
+    const name = GENERATED_CONFIG.instance.name;
+    const rows = [
+      `Enforcement (webhook + <code>cla/${GENERATED_CONFIG.github.appSlug === "TODO-stage-1" ? "ribose" : GENERATED_CONFIG.github.appSlug}</code> checks): ${enforcementArmed ? "<strong>operational</strong>" : "awaiting GitHub App connection"}`,
+      `Signing portal: ${portalArmed ? '<strong>operational</strong>' : 'awaiting GitHub App connection'}`,
+    ];
+    const links = portalArmed
+      ? `<ul>
+<li><a href="/icla">Sign the Individual CLA</a></li>
+<li><a href="/organizations">Join your organization's CLA</a></li>
+<li><a href="/agreements">My agreements</a></li>
+</ul>`
+      : `<p>Sign-in opens once the GitHub App is connected (setup in progress).</p>`;
+    return c.html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${name} — CLA</title></head>
+<body style="font-family:sans-serif;max-width:40em;margin:4em auto;line-height:1.5">
+<h1>${name} — Contributor License Agreements</h1>
+<ul>${rows.map((r) => `<li>${r}</li>`).join("")}</ul>
+${links}
+<p style="color:#666">Fail-closed posture: closed surfaces answer 404 and nothing is ever faked.</p>
+</body></html>`);
+  });
 
   // ---- GitHub webhook (fail-closed: no secret configured -> closed) ----
   const webhookSecret = env.WEBHOOK_SECRET;
@@ -453,16 +486,10 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       return c.json({ enrolled: true, oclaId: t.oclaId });
     });
 
-    // find your organization (session-gated)
-    app.get("/organizations", async (c) => {
-      if (!(await ses(c))) return c.json({ error: "sign in required" }, 401);
-      const { snapshot } = await loadSnapshot(
-        { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
-        kernelEditions(GENERATED_CONFIG),
-      );
-      return c.json({ organizations: snapshot.oclas.map((o) => ({ slug: o.orgSlug, edition: o.edition.version, coveredCount: o.covered.length })) });
-    });
-
+    // PRIVACY (owner decision 2026-11-13): signers and covered orgs are
+    // NOT enumerable. There is no org-list endpoint — an employee joins
+    // by the exact slug their PoC shares; existence reveals itself only
+    // to someone who already knows the name.
     app.post("/organizations/:slug/join", async (c) => {
       const session = await ses(c);
       if (!session) return c.json({ error: "sign in required" }, 401);
