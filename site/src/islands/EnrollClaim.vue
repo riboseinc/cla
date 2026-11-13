@@ -11,9 +11,19 @@ const checked = ref(false);
 onMounted(async () => {
   token.value = new URLSearchParams(window.location.search).get("t") ?? "";
   const me = await fetch("/api/agreements");
+  if (me.status === 404) {
+    result.value = { error: "The signing portal is not open yet." };
+    checked.value = true;
+    return;
+  }
   if (me.status === 401) {
     // sign in first, then come back with the link (it survives in the address bar)
     result.value = { error: "Sign in first (GitHub, top right), then reopen this enrollment link." };
+    checked.value = true;
+    return;
+  }
+  if (!me.ok) {
+    result.value = { error: `The portal answered ${me.status}.` };
     checked.value = true;
     return;
   }

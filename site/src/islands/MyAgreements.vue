@@ -4,10 +4,15 @@ import { onMounted, ref } from "vue";
 
 const me = ref<Record<string, unknown> | null>(null);
 const denied = ref(false);
+const unarmed = ref(false);
 
 onMounted(async () => {
   const res = await fetch("/api/agreements");
-  if (res.status === 401) {
+  if (res.status === 404) {
+    unarmed.value = true;
+    return;
+  }
+  if (!res.ok) {
     denied.value = true;
     return;
   }
@@ -24,7 +29,8 @@ const viewText = async (kind: string, version: string) => {
 </script>
 
 <template>
-  <p v-if="denied" class="text-mist">
+  <p v-if="unarmed" class="text-mist">The signing portal is not open yet.</p>
+  <p v-else-if="denied" class="text-mist">
     Sign in to see your agreements.
     <a href="/signin/github" class="text-seal hover:underline">Sign in →</a>
   </p>
