@@ -84,7 +84,12 @@ export class GithubApi {
 
     const res = await this.fetcher(`https://api.github.com/app/installations/${installationId}/access_tokens`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${await this.appJwt()}`, Accept: "application/vnd.github+json" },
+      headers: {
+        Authorization: `Bearer ${await this.appJwt()}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "ribose-cla",
+      },
     });
     if (!res.ok) throw new Error(`installation token mint failed: ${res.status}`);
     const body = (await res.json()) as { token: string };
@@ -109,6 +114,7 @@ export class GithubApi {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "ribose-cla",
     };
     if (opts.etagPath) {
       const cached = this.deps.etagCache.get(opts.etagPath);

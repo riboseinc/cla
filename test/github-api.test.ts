@@ -147,4 +147,15 @@ describe("GithubApi: ETag-conditional requests", () => {
     const auth = ((calls[calls.length - 1]!.init?.headers ?? {}) as Record<string, string>)["Authorization"];
     expect(auth).toBe("Bearer ghs_installment_42");
   });
+
+  it("sends a User-Agent on every GitHub API call", async () => {
+    const { privatePem } = await makeKeyPem();
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const api = new GithubApi(memoryDeps({ privateKeyPem: privatePem, fetcher: fixtureFetcher(calls) }));
+    await api.installationToken(42);
+    await api.request(42, "GET", "/repos/o/r/git/trees/HEAD");
+    const uas = calls.map((c) => ((c.init?.headers ?? {}) as Record<string, string>)["User-Agent"]);
+    expect(uas).toHaveLength(2);
+    expect(uas.every((ua) => ua === "ribose-cla")).toBe(true);
+  });
 });
