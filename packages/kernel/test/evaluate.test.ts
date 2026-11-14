@@ -5,7 +5,6 @@ import {
   type Config,
   type Editions,
   type PrInput,
-  type StaffMap,
   type StoreSnapshot,
 } from "../src/evaluate";
 
@@ -19,7 +18,6 @@ const EDITIONS: Editions = {
 const config = (over: Partial<Config["coverage"]> = {}): Config => ({
   coverage: {
     allowlist: { global: [], perOrg: {}, ...over.allowlist },
-    staffRoles: [{ org: "ribose", role: "staff" }, ...(over.staffRoles ?? [])],
   },
 });
 
@@ -66,7 +64,6 @@ describe("kernel: allowlist", () => {
       snap,
       config({ allowlist: { global: ["dependabot[bot]"], perOrg: {} } }),
       EDITIONS,
-      {},
     );
     expect(v.committers[0]).toMatchObject({ status: "covered", path: "allowlist" });
     expect(v.verdict).toBe("pass");
@@ -78,7 +75,6 @@ describe("kernel: allowlist", () => {
       snapshot(),
       config({ allowlist: { global: [], perOrg: { conormis: ["conormis-ci"] } } }),
       EDITIONS,
-      {},
     );
     expect(v.committers[0]).toMatchObject({ status: "covered", path: "allowlist" });
 
@@ -87,7 +83,6 @@ describe("kernel: allowlist", () => {
       snapshot(),
       config({ allowlist: { global: [], perOrg: { conormis: ["conormis-ci"] } } }),
       EDITIONS,
-      {},
     );
     expect(other.committers[0]?.status).toBe("missing");
   });
@@ -95,25 +90,25 @@ describe("kernel: allowlist", () => {
 
 describe("kernel: ICLA", () => {
   it("current-edition ICLA covers its login case-insensitively", () => {
-    const v = evaluate(pr([login("TJ-91")]), snapshot({ iclas: [icla({ githubLogin: "tj-91" })] }), config(), EDITIONS, {});
+    const v = evaluate(pr([login("TJ-91")]), snapshot({ iclas: [icla({ githubLogin: "tj-91" })] }), config(), EDITIONS);
     expect(v.committers[0]).toMatchObject({ status: "covered", path: "icla" });
   });
 
   it("stale-edition ICLA does not cover (re-sign required)", () => {
     const stale = icla({ edition: { kind: "icla", version: "0.9", textSha256: "oldsha" } });
-    const v = evaluate(pr([login("tj-91")]), snapshot({ iclas: [stale] }), config(), EDITIONS, {});
+    const v = evaluate(pr([login("tj-91")]), snapshot({ iclas: [stale] }), config(), EDITIONS);
     expect(v.committers[0]?.status).toBe("missing");
   });
 
   it("a revoked ICLA does not cover", () => {
-    const v = evaluate(pr([login("tj-91")]), snapshot({ iclas: [icla()], revokedIds: ["icla-1"] }), config(), EDITIONS, {});
+    const v = evaluate(pr([login("tj-91")]), snapshot({ iclas: [icla()], revokedIds: ["icla-1"] }), config(), EDITIONS);
     expect(v.committers[0]?.status).toBe("missing");
   });
 });
 
 describe("kernel: OCLA Schedule A", () => {
   it("a current-edition OCLA covers its Schedule A logins", () => {
-    const v = evaluate(pr([login("falko-strenzke")]), snapshot({ oclas: [ocla()] }), config(), EDITIONS, {});
+    const v = evaluate(pr([login("falko-strenzke")]), snapshot({ oclas: [ocla()] }), config(), EDITIONS);
     expect(v.committers[0]).toMatchObject({
       status: "covered",
       path: "ocla",
@@ -123,36 +118,27 @@ describe("kernel: OCLA Schedule A", () => {
 
   it("a stale-edition OCLA does not cover its Schedule A", () => {
     const stale = ocla({ edition: { kind: "ocla", version: "0.9", textSha256: "oldsha" } });
-    const v = evaluate(pr([login("tj-91")]), snapshot({ oclas: [stale] }), config(), EDITIONS, {});
+    const v = evaluate(pr([login("tj-91")]), snapshot({ oclas: [stale] }), config(), EDITIONS);
     expect(v.committers[0]?.status).toBe("missing");
   });
 
   it("a voided (revoked) OCLA does not cover its Schedule A", () => {
-    const v = evaluate(pr([login("tj-91")]), snapshot({ oclas: [ocla()], revokedIds: ["ocla-1"] }), config(), EDITIONS, {});
+    const v = evaluate(pr([login("tj-91")]), snapshot({ oclas: [ocla()], revokedIds: ["ocla-1"] }), config(), EDITIONS);
     expect(v.committers[0]?.status).toBe("missing");
   });
 
   it("a login not on Schedule A is not covered by the org's OCLA", () => {
-    const v = evaluate(pr([login("stranger")]), snapshot({ oclas: [ocla()] }), config(), EDITIONS, {});
+    const v = evaluate(pr([login("stranger")]), snapshot({ oclas: [ocla()] }), config(), EDITIONS);
     expect(v.committers[0]?.status).toBe("missing");
   });
 });
 
-describe("kernel: staff employment via identity roles", () => {
-  it("a staff-role match covers as staff", () => {
-    const staffMap: StaffMap = { "ronald-t": { org: "ribose", role: "staff" } };
-    const v = evaluate(pr([login("ronald-t")]), snapshot(), config(), EDITIONS, staffMap);
-    expect(v.committers[0]).toMatchObject({ status: "covered", path: "staff" });
-  });
-
-  it("a contractor role is NOT employment-covered — the distinction's whole point", () => {
-    const staffMap: StaffMap = { "contractor-x": { org: "ribose", role: "contractor" } };
-    const v = evaluate(pr([login("contractor-x")]), snapshot(), config(), EDITIONS, staffMap);
-    expect(v.committers[0]?.status).toBe("missing");
-  });
-
-  it("an unresolvable staff login falls through honestly (fail-closed)", () => {
-    const v = evaluate(pr([login("ghost-staff")]), snapshot(), config(), EDITIONS, {});
+describe("kernel: the signature is the coverage (owner decision 2026-11-14)", () => {
+  it("employment alone covers nobody — even a staff-role match must point at a signature", () => {
+    // The staff/employment path was removed: every human signature is
+    // clicked. No staffMap input exists anymore, so nothing can cover
+    // but an ICLA record or an OCLA roster row.
+    const v = evaluate(pr([login("ronald-t")]), snapshot(), config(), EDITIONS);
     expect(v.committers[0]?.status).toBe("missing");
   });
 });
@@ -160,7 +146,7 @@ describe("kernel: staff employment via identity roles", () => {
 describe("kernel: must-specify (multi-agreement ambiguity)", () => {
   it("ICLA + OCLA coverage forces the PR to specify, listing both", () => {
     const snap = snapshot({ iclas: [icla({ githubLogin: "tj-91" })], oclas: [ocla()] });
-    const v = evaluate(pr([login("tj-91")]), snap, config(), EDITIONS, {});
+    const v = evaluate(pr([login("tj-91")]), snap, config(), EDITIONS);
     expect(v.committers[0]?.status).toBe("must-specify");
     expect(v.committers[0]?.status === "must-specify" ? v.committers[0].options : []).toEqual([
       { kind: "icla", version: "1.0" },
@@ -168,19 +154,10 @@ describe("kernel: must-specify (multi-agreement ambiguity)", () => {
     ]);
   });
 
-  it("ICLA + staff also forces specification, offering the staff path", () => {
-    const snap = snapshot({ iclas: [icla({ githubLogin: "ronald-t" })] });
-    const staffMap: StaffMap = { "ronald-t": { org: "ribose", role: "staff" } };
-    const v = evaluate(pr([login("ronald-t")]), snap, config(), EDITIONS, staffMap);
-    expect(v.committers[0]?.status).toBe("must-specify");
-    const options = v.committers[0]?.status === "must-specify" ? v.committers[0].options : [];
-    expect(options).toContainEqual({ kind: "icla", version: "1.0" });
-    expect(options).toContainEqual({ kind: "staff", org: "ribose", role: "staff" });
-  });
 
   it("two OCLAs covering the same login force specification between them", () => {
     const second = ocla({ id: "ocla-2", orgSlug: "otherco" });
-    const v = evaluate(pr([login("tj-91")]), snapshot({ oclas: [ocla(), second] }), config(), EDITIONS, {});
+    const v = evaluate(pr([login("tj-91")]), snapshot({ oclas: [ocla(), second] }), config(), EDITIONS);
     expect(v.committers[0]?.status).toBe("must-specify");
   });
 });
@@ -192,7 +169,6 @@ describe("kernel: unlinked-email fallback", () => {
       snapshot({ iclas: [icla({ email: "a@example.com" })] }),
       config(),
       EDITIONS,
-      {},
     );
     expect(v.committers[0]).toMatchObject({ status: "covered", path: "icla", matchedBy: "email" });
   });
@@ -203,13 +179,12 @@ describe("kernel: unlinked-email fallback", () => {
       snapshot({ oclas: [ocla()] }),
       config(),
       EDITIONS,
-      {},
     );
     expect(v.committers[0]).toMatchObject({ status: "covered", path: "ocla", matchedBy: "email" });
   });
 
   it("no login and no email match => missing", () => {
-    const v = evaluate(pr([{ login: null, email: "unknown@example.com" }]), snapshot(), config(), EDITIONS, {});
+    const v = evaluate(pr([{ login: null, email: "unknown@example.com" }]), snapshot(), config(), EDITIONS);
     expect(v.committers[0]?.status).toBe("missing");
   });
 });
@@ -220,7 +195,7 @@ describe("kernel: attribution elections resolve must-specify", () => {
   it("a stored election for this (repo, pr, login) resolves to covered", () => {
     const snap = both();
     snap.attributions = [{ repo: "rnpgp/rnp", pr: 1, login: "tj-91", agreement: { kind: "ocla", version: "1.0", oclaId: "ocla-1", orgSlug: "mtg-ag" } }];
-    const v = evaluate(pr([login("tj-91")]), snap, config(), EDITIONS, {});
+    const v = evaluate(pr([login("tj-91")]), snap, config(), EDITIONS);
     expect(v.committers[0]).toMatchObject({ status: "covered", path: "ocla" });
     expect(v.mustSpecify["tj-91"]).toBeUndefined();
   });
@@ -228,7 +203,7 @@ describe("kernel: attribution elections resolve must-specify", () => {
   it("an election for another login or PR does not resolve", () => {
     const snap = both();
     snap.attributions = [{ repo: "rnpgp/rnp", pr: 2, login: "tj-91", agreement: { kind: "icla", version: "1.0" } }];
-    expect(evaluate(pr([login("tj-91")]), snap, config(), EDITIONS, {}).committers[0]?.status).toBe("must-specify");
+    expect(evaluate(pr([login("tj-91")]), snap, config(), EDITIONS).committers[0]?.status).toBe("must-specify");
   });
 
   it("an election naming a no-longer-live agreement stays must-specify", () => {
@@ -237,7 +212,7 @@ describe("kernel: attribution elections resolve must-specify", () => {
     // remove the icla path: only the ocla remains -> single path anyway... instead void the ocla and elect ocla
     snap.oclas = [];
     snap.attributions = [{ repo: "rnpgp/rnp", pr: 1, login: "tj-91", agreement: { kind: "ocla", version: "1.0", oclaId: "ocla-1", orgSlug: "mtg-ag" } }];
-    const v = evaluate(pr([login("tj-91")]), snap, config(), EDITIONS, {});
+    const v = evaluate(pr([login("tj-91")]), snap, config(), EDITIONS);
     expect(v.committers[0]).toMatchObject({ status: "covered", path: "icla" }); // single live path wins, not the dead election
   });
 });
@@ -249,7 +224,6 @@ describe("kernel: bots and PR verdicts", () => {
       snapshot({ oclas: [ocla()] }),
       config(),
       EDITIONS,
-      {},
     );
     expect(v.committers).toHaveLength(1);
     expect(v.verdict).toBe("pass");
@@ -261,7 +235,6 @@ describe("kernel: bots and PR verdicts", () => {
       snapshot({ oclas: [ocla()] }),
       config(),
       EDITIONS,
-      {},
     );
     expect(v.verdict).toBe("fail");
     expect(v.missing).toEqual(["stranger"]);
@@ -269,7 +242,7 @@ describe("kernel: bots and PR verdicts", () => {
 
   it("PR verdict surfaces must-specify without failing the covered", () => {
     const snap = snapshot({ iclas: [icla({ githubLogin: "tj-91" })], oclas: [ocla()] });
-    const v = evaluate(pr([login("tj-91"), login("falko-strenzke")]), snap, config(), EDITIONS, {});
+    const v = evaluate(pr([login("tj-91"), login("falko-strenzke")]), snap, config(), EDITIONS);
     expect(v.verdict).toBe("pass");
     expect(v.mustSpecify["tj-91"]).toBeDefined();
     expect(v.mustSpecify["falko-strenzke"]).toBeUndefined();
@@ -281,7 +254,6 @@ describe("kernel: bots and PR verdicts", () => {
       snapshot({ iclas: [icla({ githubLogin: "zeta" }), icla({ id: "icla-2", githubLogin: "alpha" })] }),
       config(),
       EDITIONS,
-      {},
     );
     expect(v.committers.map((c) => c.login)).toEqual(["zeta", "alpha"]);
   });

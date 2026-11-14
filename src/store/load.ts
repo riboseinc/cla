@@ -116,9 +116,8 @@ export async function loadAndEvaluate(
   editions: Editions,
   args: Parameters<typeof evaluate>[0],
   cfg: Parameters<typeof evaluate>[2],
-  staff: Parameters<typeof evaluate>[4],
 ): Promise<{ loaded: LoadedSnapshot; verdict: PrVerdict }> {
   const loaded = await loadSnapshot(deps, editions);
-  const verdict = evaluate(args, loaded.snapshot, cfg, editions, staff);
+  const verdict = evaluate(args, loaded.snapshot, cfg, editions);
   return { loaded, verdict };
 }

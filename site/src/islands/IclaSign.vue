@@ -79,7 +79,7 @@ async function sign() {
     error.value = String(json["error"] ?? `signing failed (${res.status})`);
   }
 }
-const canSign = computed(() => terms.value && past.value !== "unset");
+const canSign = computed(() => terms.value && past.value !== "unset" && name.value.trim().length > 0);
 </script>
 
 <template>
@@ -105,10 +105,29 @@ const canSign = computed(() => terms.value && past.value !== "unset");
           for review; sign-in opens once the portal is connected.
         </p>
         <template v-else>
-          <p class="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-            First, prove your GitHub handle. You'll come straight back to
-            this signature line.
-          </p>
+          <div class="space-y-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+            <div class="rounded-sm border border-rule bg-white dark:bg-ink-2 p-4 text-ink dark:text-white">
+              <p class="font-medium">The effect of signature depends on Your standing:</p>
+              <p class="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                If You are Ribose staff, or a party to an existing contractor or service agreement
+                with Ribose, signing establishes solely the association between Your GitHub account
+                and this CLA system; it creates no additional claims and does not modify, supersede,
+                or otherwise affect any rights or obligations arising under any such existing agreement.
+              </p>
+              <p class="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                For any other Contributor, signing constitutes Your acceptance of this Agreement and
+                grants the licenses set forth in its text, shown in full on this page.
+              </p>
+              <p class="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                In either case, one signature covers Your contributions to all Ribose organizations
+                on GitHub.
+              </p>
+            </div>
+            <p>
+              First, prove your GitHub handle — GitHub, then your Ribose ID, then straight
+              back to this signature line. About a minute.
+            </p>
+          </div>
           <a
             href="/signin/github"
             class="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-ink dark:bg-white px-4 py-3 font-medium text-ink transition-colors hover:bg-white"
@@ -159,8 +178,8 @@ const canSign = computed(() => terms.value && past.value !== "unset");
             />
           </label>
           <label class="block">
-            <span class="text-slate-500 dark:text-slate-400">Name</span>
-            <input v-model="name" type="text" class="mt-1 w-full rounded-sm border border-rule bg-white dark:bg-ink-2 px-3 py-2 text-ink dark:text-white focus:border-brand-400 focus:outline-none" />
+            <span class="text-slate-500 dark:text-slate-400">Full legal name — typing it is your signature</span>
+            <input v-model="name" type="text" autocomplete="name" class="mt-1 w-full rounded-sm border border-rule bg-white dark:bg-ink-2 px-3 py-2 text-ink dark:text-white focus:border-brand-400 focus:outline-none" />
           </label>
           <label class="block">
             <span class="text-slate-500 dark:text-slate-400">Email</span>
@@ -197,14 +216,22 @@ const canSign = computed(() => terms.value && past.value !== "unset");
 
         <p v-if="error" class="rounded-sm border border-accent-600/40 bg-accent-600/10 px-3 py-2 text-sm text-accent-600 dark:text-accent-400" role="alert">{{ error }}</p>
 
-        <!-- the signature line: you sign above the line -->
+        <!-- the signature line: the typed legal name IS the signature -->
         <div class="border-t border-rule pt-5">
+          <div class="rounded-sm border border-rule bg-paper px-4 py-3 text-paper-ink" aria-live="polite">
+            <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-paper-ink/60">Signature</p>
+            <p class="mt-1 font-serif text-xl italic" :class="name.trim() ? '' : 'text-paper-ink/30'">{{ name.trim() || "—" }}</p>
+            <p class="mt-1 text-xs leading-relaxed text-paper-ink/60">
+              By clicking below, You sign this Agreement electronically. Your typed full legal name,
+              bound to Your verified GitHub handle and Ribose ID, constitutes Your signature.
+            </p>
+          </div>
           <button
             :disabled="!canSign"
-            class="w-full rounded-sm bg-brand-500 px-4 py-3 font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            class="mt-4 w-full rounded-sm bg-brand-500 px-4 py-3 font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             @click="sign"
           >
-            Sign the agreement
+            {{ name.trim() ? `Sign as ${name.trim()}` : "Sign the agreement" }}
           </button>
           <p class="mt-2 text-center font-mono text-[11px] text-slate-500 dark:text-slate-400">· · · sign above the line · · ·</p>
         </div>
@@ -217,10 +244,12 @@ const canSign = computed(() => terms.value && past.value !== "unset");
     <div class="mx-auto max-w-md rounded-sm border border-rule bg-white dark:bg-ink-2 p-8 text-center">
       <span class="mx-auto block h-3 w-3 rounded-[2px] bg-brand-500" aria-hidden="true"></span>
       <h1 class="mt-4 font-serif text-2xl font-semibold">Signed.</h1>
+      <p v-if="name.trim()" class="mt-2 font-serif text-xl italic">— {{ name.trim() }}</p>
       <p class="mt-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-        Your ICLA is recorded (append-only)
+        This Agreement is recorded append-only as
         <span class="font-mono text-xs text-ink dark:text-white">{{ signedRecord }}</span>.
-        Your next pull request turns green on its own.
+        One signature covers Your contributions to <strong>all Ribose organizations on GitHub</strong> —
+        your next pull request turns green on its own.
       </p>
       <a href="/agreements" class="mt-6 inline-block text-sm text-brand-600 dark:text-brand-400 hover:underline">View my agreements →</a>
     </div>

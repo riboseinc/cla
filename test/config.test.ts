@@ -19,9 +19,6 @@ github:
   offline_repo: example-org/cla-offline
   data_installation_id: 42
 coverage:
-  staff_roles:
-    - { org: example-org, role: staff }
-    - { org: example-org, role: contractor }
   allowlist:
     global: [ "Dependabot[bot]" ]
     per_org: { example-org: [ "Example-CI" ] }
@@ -110,11 +107,6 @@ describe("config: fails closed at gen time", () => {
     expect("errors" in r).toBe(true);
   });
 
-  it("malformed staff_roles entries are errors, not silently dropped", async () => {
-    const bad = VALID.replace("    - { org: example-org, role: contractor }\n", "    - { org: example-org }\n");
-    const r = await parseConfig(bad, reader);
-    expect("errors" in r && r.errors.some((e) => e.path === "coverage.staff_roles")).toBe(true);
-  });
 });
 
 describe("sha helper sanity", () => {

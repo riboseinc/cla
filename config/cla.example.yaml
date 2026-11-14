@@ -9,7 +9,6 @@ instance:
 identity:
   issuer: https://id.example.org
   client_id: example-oidc-client
-  service_token_ref: SERVICE_TOKEN
 
 legal:
   editions:
@@ -29,8 +28,6 @@ github:
   data_installation_id: 1
 
 coverage:
-  staff_roles:
-    - { org: example-org, role: staff }
   allowlist:
     global:
       - "dependabot[bot]"

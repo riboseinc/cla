@@ -3,8 +3,9 @@ import type { ClaEdition } from "./index";
 /**
  * The pure CLA evaluation kernel (docs/design.md §5). Zero I/O: every
  * input is plain data, every output is a plain verdict. The webhook
- * leg resolves staff roles and store snapshots into the shapes below;
- * this module owns the LEGAL logic and nothing else.
+ * leg resolves store snapshots into the shapes below; this module owns
+ * the LEGAL logic and nothing else. The signature is the coverage: one
+ * clicked ICLA (or an OCLA roster row) covers every organization.
  */
 
 // ---- inputs ----
@@ -28,12 +29,8 @@ export type Editions = { icla: ClaEdition; ocla: ClaEdition };
 export type Config = {
   coverage: {
     allowlist: { global: string[]; perOrg: Record<string, string[]> };
-    /** (org, role) pairs that mean employment-covered; everyone else — including contractors — signs or joins. */
-    staffRoles: Array<{ org: string; role: string }>;
   };
 };
-
-export type StaffMap = Record<string, { org: string; role: string }>;
 
 export type IclaRecord = {
   id: string;
@@ -68,11 +65,10 @@ export type StoreSnapshot = {
 
 export type AgreementRef =
   | { kind: "icla"; version: string }
-  | { kind: "ocla"; version: string; oclaId: string; orgSlug: string }
-  | { kind: "staff"; org: string; role: string };
+  | { kind: "ocla"; version: string; oclaId: string; orgSlug: string };
 
 export type CommitterVerdict =
-  | { login: string | null; status: "covered"; path: "allowlist" | "icla" | "ocla" | "staff"; agreement?: AgreementRef; matchedBy: "login" | "email" }
+  | { login: string | null; status: "covered"; path: "allowlist" | "icla" | "ocla"; agreement?: AgreementRef; matchedBy: "login" | "email" }
   | { login: string | null; status: "must-specify"; options: AgreementRef[]; matchedBy: "login" | "email" }
   | { login: string | null; status: "missing" };
 
@@ -107,13 +103,11 @@ function collectPaths(
   key: "login" | "email",
   value: string,
   snap: StoreSnapshot,
-  cfg: Config,
   editions: Editions,
-  staff: StaffMap,
   revoked: Set<string>,
-): { path: "icla" | "ocla" | "staff"; agreement?: AgreementRef }[] {
+): { path: "icla" | "ocla"; agreement?: AgreementRef }[] {
   const v = normalize(value);
-  const out: { path: "icla" | "ocla" | "staff"; agreement?: AgreementRef }[] = [];
+  const out: { path: "icla" | "ocla"; agreement?: AgreementRef }[] = [];
 
   for (const r of snap.iclas) {
     if (!isLive(r, editions.icla, revoked)) continue;
@@ -127,14 +121,10 @@ function collectPaths(
     );
     if (hit) out.push({ path: "ocla", agreement: oclaRef(o) });
   }
-  const sm = key === "login" ? staff[v] : undefined;
-  if (sm && cfg.coverage.staffRoles.some((sr) => sr.org === sm.org && sr.role === sm.role)) {
-    out.push({ path: "staff", agreement: { kind: "staff", org: sm.org, role: sm.role } });
-  }
   return out;
 }
 
-export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions: Editions, staff: StaffMap): PrVerdict {
+export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions: Editions): PrVerdict {
   const revoked = new Set(snap.revokedIds);
   const committers: CommitterVerdict[] = [];
   const missing: string[] = [];
@@ -151,15 +141,15 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
       continue;
     }
 
-    const paths: { path: "icla" | "ocla" | "staff"; agreement?: AgreementRef }[] = [];
+    const paths: { path: "icla" | "ocla"; agreement?: AgreementRef }[] = [];
     let matchedBy: "login" | "email" = "login";
     let resolvedLogin: string | null = c.login;
 
     if (c.login) {
-      paths.push(...collectPaths("login", c.login, snap, cfg, editions, staff, revoked));
+      paths.push(...collectPaths("login", c.login, snap, editions, revoked));
     }
     if (paths.length === 0 && c.email) {
-      paths.push(...collectPaths("email", c.email, snap, cfg, editions, staff, revoked));
+      paths.push(...collectPaths("email", c.email, snap, editions, revoked));
       matchedBy = "email";
       resolvedLogin = c.login;
     }
@@ -196,4 +186,4 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
 }
 
 const agreementKey = (a: AgreementRef): string =>
-  a.kind === "ocla" ? `ocla:${a.oclaId}` : a.kind === "icla" ? "icla" : `staff:${a.org}:${a.role}`;
+  a.kind === "ocla" ? `ocla:${a.oclaId}` : "icla";

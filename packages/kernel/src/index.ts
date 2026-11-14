@@ -28,7 +28,6 @@ export {
   type OclaRecord,
   type PrInput,
   type PrVerdict,
-  type StaffMap,
   type StoreSnapshot,
 } from "./evaluate";
 

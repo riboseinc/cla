@@ -101,11 +101,12 @@ describe("/icla/complete", () => {
     expect(res.headers.get("location")).toContain("/icla");
   });
 
-  it("without a session it starts the dual flow carrying next=/icla and the invited login", async () => {
+  it("without a session it lands on the PAPER first (the agreement renders pre-sign-in), carrying next=/icla and the invited login", async () => {
     const token = await signCompletionToken("op-secret", { repo: "r", pr: 1, login: "stranger" }, Date.now());
     const res = await app().request(`/icla/complete?t=${token}`);
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toContain("https://github.com/login/oauth/authorize");
+    expect(res.headers.get("location")).toContain("/icla");
+    expect(res.headers.get("location")).not.toContain("github.com");
     const flow = res.headers.getSetCookie().find((c) => c.startsWith("cla_flow="))!.split(";")[0]!.split("=").slice(1).join(".");
     const decoded = Buffer.from(flow.split(".")[0]!.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString();
     expect(decoded).toContain('"next":"/icla"');
