@@ -105,10 +105,29 @@ const canSign = computed(() => terms.value && past.value !== "unset" && name.val
           for review; sign-in opens once the portal is connected.
         </p>
         <template v-else>
-          <p class="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-            First, prove your GitHub handle. You'll come straight back to
-            this signature line.
-          </p>
+          <div class="space-y-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+            <div class="rounded-sm border border-rule bg-white dark:bg-ink-2 p-4 text-ink dark:text-white">
+              <p class="font-medium">The effect of signature depends on Your standing:</p>
+              <p class="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                If You are Ribose staff, or a party to an existing contractor or service agreement
+                with Ribose, signing establishes solely the association between Your GitHub account
+                and this CLA system; it creates no additional claims and does not modify, supersede,
+                or otherwise affect any rights or obligations arising under any such existing agreement.
+              </p>
+              <p class="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                For any other Contributor, signing constitutes Your acceptance of this Agreement and
+                grants the licenses set forth in its text, shown in full on this page.
+              </p>
+              <p class="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                In either case, one signature covers Your contributions to all Ribose organizations
+                on GitHub.
+              </p>
+            </div>
+            <p>
+              First, prove your GitHub handle — GitHub, then your Ribose ID, then straight
+              back to this signature line. About a minute.
+            </p>
+          </div>
           <a
             href="/signin/github"
             class="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-ink dark:bg-white px-4 py-3 font-medium text-ink transition-colors hover:bg-white"
@@ -203,8 +222,8 @@ const canSign = computed(() => terms.value && past.value !== "unset" && name.val
             <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-paper-ink/60">Signature</p>
             <p class="mt-1 font-serif text-xl italic" :class="name.trim() ? '' : 'text-paper-ink/30'">{{ name.trim() || "—" }}</p>
             <p class="mt-1 text-xs leading-relaxed text-paper-ink/60">
-              Signed electronically by clicking below — this typed name, bound to your verified
-              GitHub handle and Ribose ID, is your signature.
+              By clicking below, You sign this Agreement electronically. Your typed full legal name,
+              bound to Your verified GitHub handle and Ribose ID, constitutes Your signature.
             </p>
           </div>
           <button
@@ -227,9 +246,9 @@ const canSign = computed(() => terms.value && past.value !== "unset" && name.val
       <h1 class="mt-4 font-serif text-2xl font-semibold">Signed.</h1>
       <p v-if="name.trim()" class="mt-2 font-serif text-xl italic">— {{ name.trim() }}</p>
       <p class="mt-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-        Recorded append-only as
+        This Agreement is recorded append-only as
         <span class="font-mono text-xs text-ink dark:text-white">{{ signedRecord }}</span>.
-        One signature covers your contributions to <strong>every Ribose organization on GitHub</strong> —
+        One signature covers Your contributions to <strong>all Ribose organizations on GitHub</strong> —
         your next pull request turns green on its own.
       </p>
       <a href="/agreements" class="mt-6 inline-block text-sm text-brand-600 dark:text-brand-400 hover:underline">View my agreements →</a>

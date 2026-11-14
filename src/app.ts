@@ -178,7 +178,11 @@ ${links}
     app.get("/signin/github", async (c) => {
       const state = randomToken();
       const url = githubAuthorizeUrl(env.GITHUB_APP_CLIENT_ID!, `${portalBase}/callback/github`, state);
-      c.header("Set-Cookie", `cla_flow=${await makeStateCookie(env.OIDC_CLIENT_SECRET!, { flow: "github", state }, now())}${cookieOpts(600)}`);
+      // Carry any pending flow context (a completion link set next/tlogin
+      // before the page rendered) into the fresh round.
+      const prior = await readStateCookie(env.OIDC_CLIENT_SECRET!, c.req.header("cookie")?.split(";").find((x) => x.trim().startsWith("cla_flow="))?.split("=").slice(1).join("="), now());
+      const carry = prior && prior["flow"] === "github" ? { ...(prior["next"] ? { next: prior["next"] } : {}), ...(prior["tlogin"] ? { tlogin: prior["tlogin"] } : {}) } : {};
+      c.header("Set-Cookie", `cla_flow=${await makeStateCookie(env.OIDC_CLIENT_SECRET!, { flow: "github", state, ...carry }, now())}${cookieOpts(600)}`);
       return c.redirect(url.toString());
     });
 
@@ -195,7 +199,7 @@ ${links}
       const discovery = await discover(identity.issuer, fetcher, now());
       const redirectUri = `${portalBase}/callback/ribose`;
       const auth = await authorizationRequest(discovery, identity.clientId, redirectUri, randomToken);
-      c.header("Set-Cookie", `cla_flow=${await makeStateCookie(env.OIDC_CLIENT_SECRET!, { flow: "ribose", state: auth.state, verifier: auth.verifier, ghLogin: user.login.toLowerCase(), ghId: String(user.id) }, now())}${cookieOpts(600)}`);
+      c.header("Set-Cookie", `cla_flow=${await makeStateCookie(env.OIDC_CLIENT_SECRET!, { flow: "ribose", state: auth.state, verifier: auth.verifier, ghLogin: user.login.toLowerCase(), ghId: String(user.id), ...(flow["next"] ? { next: flow["next"] } : {}), ...(flow["tlogin"] ? { tlogin: flow["tlogin"] } : {}) }, now())}${cookieOpts(600)}`);
       return c.redirect(auth.url.toString());
     });
 
@@ -342,11 +346,13 @@ ${links}
       if (!tokenData) return c.json({ error: "invalid or expired completion link" }, 400);
       const session = await ses(c);
       if (session && session.login === tokenData.login) return c.redirect(`${portalBase}/icla`);
-      // re-prove the handle through the dual flow, then land on /icla
+      // The paper comes BEFORE the handoff (SOTA: frame the document
+      // first): land on /icla — the agreement renders pre-sign-in — and
+      // carry the completion binding in the flow cookie so the GitHub
+      // round continues it.
       const state = randomToken();
-      const url = githubAuthorizeUrl(env.GITHUB_APP_CLIENT_ID!, `${portalBase}/callback/github`, state);
       c.header("Set-Cookie", `cla_flow=${await makeStateCookie(env.OIDC_CLIENT_SECRET!, { flow: "github", state, next: "/icla", tlogin: tokenData.login }, now())}${cookieOpts(600)}`);
-      return c.redirect(url.toString());
+      return c.redirect(`${portalBase}/icla`);
     });
 
     // ---- OCLA self-service + PoC console (docs/design.md §4, issue #7) ----

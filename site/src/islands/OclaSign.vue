@@ -193,8 +193,9 @@ async function sign() {
             <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-paper-ink/60">Signature — for {{ orgName || "the organization" }}</p>
             <p class="mt-1 font-serif text-xl italic" :class="signatoryName.trim() ? '' : 'text-paper-ink/30'">{{ signatoryName.trim() || "—" }}</p>
             <p class="mt-1 text-xs leading-relaxed text-paper-ink/60">
-              Signed electronically by clicking below — this typed name, bound to your on-domain verified
-              mailbox and Ribose ID, is your signature under OCLA §4.
+              By clicking below, You execute this Agreement on behalf of the organization named above.
+              Your typed full legal name, bound to Your on-domain verified mailbox and Ribose ID,
+              constitutes Your signature under OCLA §4.
             </p>
           </div>
           <button
