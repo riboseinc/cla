@@ -105,7 +105,7 @@ ${links}
         tokenCache: TOKEN_CACHE,
         etagCache: ETAG_CACHE,
       });
-      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, fetcher, serviceToken: env.SERVICE_TOKEN, attributionSecret: env.OIDC_CLIENT_SECRET };
+      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, attributionSecret: env.OIDC_CLIENT_SECRET };
 
       try {
         if (evt.event === "pull_request" && ["opened", "synchronize", "reopened"].includes(evt.action ?? "")) {
@@ -284,6 +284,8 @@ ${links}
       if (form["terms"] !== "on") return c.json({ error: "the CLA terms consent is required" }, 400);
       const pastIncluded = form["past"] === "yes";
       if (!pastIncluded && form["past_declined"] !== "yes") return c.json({ error: "the past-contributions election is required (affirm, or decline explicitly)" }, 400);
+      const legalName = String(form["name"] ?? "").trim();
+      if (!legalName) return c.json({ error: "your full legal name is required — it is the signature" }, 400);
 
       const api = portalApi(env, fetcher, now);
       const { path, commitSha } = await appendRecord(
@@ -293,7 +295,7 @@ ${links}
           ribose_id_sub: session.sub,
           github_login: session.login,
           github_id: session.githubId,
-          name: (form["name"] as string) ?? "",
+          name: legalName,
           email: (form["email"] as string) || session.email || "",
           email_verified: session.emailVerified === true && ((form["email"] as string) || session.email) === session.email,
           alt_email: (form["alt_email"] as string) || null,
@@ -326,7 +328,7 @@ ${links}
         { id: randomToken(), repo: tokenData.repo, pr: tokenData.pr, login: session.login, agreement: chosen, recorded_at: new Date(now()).toISOString() },
       );
       const sha = await fetchPrHeadSha(api, tokenData.installationId, tokenData.repo, tokenData.pr);
-      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, fetcher, serviceToken: env.SERVICE_TOKEN, attributionSecret: env.OIDC_CLIENT_SECRET };
+      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, attributionSecret: env.OIDC_CLIENT_SECRET };
       await evaluatePullRequest(deps, { installationId: tokenData.installationId, repoFullName: tokenData.repo, prNumber: tokenData.pr, headSha: sha });
       return c.json({ recorded: true, agreement: chosen });
     });
@@ -412,6 +414,8 @@ ${links}
       const pocEmail = String(form["poc_email"] ?? "").trim();
       const scheduleLines = String(form["schedule_a"] ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
       if (!orgName || domains.length === 0) return c.json({ error: "org name and at least one email domain are required" }, 400);
+      const signatoryName = String(form["signatory_name"] ?? "").trim();
+      if (!signatoryName) return c.json({ error: "the signatory's full legal name is required — it is the signature" }, 400);
 
       // the integrity gate: the signatory's VERIFIED mailbox on a declared domain
       if (!session.emailVerified || !session.email || !domains.includes(domainOf(session.email) ?? "")) {
@@ -448,7 +452,7 @@ ${links}
         orgSlug: slug,
         claEdition: { kind: "ocla", version: GENERATED_CONFIG.legal.current.ocla, textSha256: edition.sha256 },
         covered: covered.map((r) => ({ githubLogin: r.githubLogin, email: r.email, githubId: r.githubId, name: r.name, title: r.title })),
-        signatory: { name: String(form["signatory_name"] ?? ""), email: signatoryEmail, title: String(form["signatory_title"] ?? ""), githubLogin: String(form["signatory_github"] ?? "") || null },
+        signatory: { name: signatoryName, email: signatoryEmail, title: String(form["signatory_title"] ?? ""), githubLogin: String(form["signatory_github"] ?? "") || null },
         poc: { name: String(form["poc_name"] ?? ""), email: pocEmail, phone: String(form["poc_phone"] ?? "") || null },
         domains,
         pastContributionsIncluded: pastIncluded,

@@ -16,8 +16,6 @@ export type Env = {
   OIDC_CLIENT_SECRET?: string;
   /** Staff console token — unset means /admin answers 404. */
   OPS_TOKEN?: string;
-  /** Identity-service subject-roles lookup token (issue #10). */
-  SERVICE_TOKEN?: string;
   /** D1 (join-request queue + ephemeral state). */
   DB?: D1Database;
   /** Resend-shaped mail provider; unset = honest no-op (notify leg). */

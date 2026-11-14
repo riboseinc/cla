@@ -14,7 +14,7 @@ export type EditionFile = { version: string; file: string; text: string; sha256:
 
 export type AppConfig = {
   instance: { name: string; portalHost: string };
-  identity: { issuer: string; clientId: string; serviceTokenRef: string };
+  identity: { issuer: string; clientId: string };
   legal: {
     editions: { icla: EditionFile[]; ocla: EditionFile[] };
     current: { icla: string; ocla: string }; // version strings
@@ -26,7 +26,6 @@ export type AppConfig = {
     dataInstallationId: number;
   };
   coverage: {
-    staffRoles: Array<{ org: string; role: string }>;
     allowlist: { global: string[]; perOrg: Record<string, string[]> };
     reposWithoutCla: string[]; // "org/name"
     commentSigning: { automatic: boolean };
@@ -104,10 +103,8 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
   const identity = obj(r["identity"]);
   const issuer = str(identity["issuer"]);
   const clientId = str(identity["client_id"]);
-  const serviceTokenRef = str(identity["service_token_ref"]);
   if (!issuer || !issuer.startsWith("https://")) errors.push({ path: "identity.issuer", message: "must be an https URL" });
   if (!clientId) errors.push({ path: "identity.client_id", message: "required" });
-  if (!serviceTokenRef) errors.push({ path: "identity.service_token_ref", message: "required" });
 
   const legalRaw = obj(r["legal"]);
   const editionsRaw = obj(legalRaw["editions"]);
@@ -125,15 +122,6 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
   if (dataInstallationId === undefined) errors.push({ path: "github.data_installation_id", message: "required numeric installation id" });
 
   const coverage = obj(r["coverage"]);
-  const staffRoles = arr(coverage["staff_roles"]).flatMap((x) => {
-    const o = obj(x);
-    const org = str(o["org"]);
-    const role = str(o["role"]);
-    return org && role ? [{ org, role }] : [];
-  });
-  if (arr(coverage["staff_roles"]).length !== staffRoles.length) {
-    errors.push({ path: "coverage.staff_roles", message: "every entry needs org + role" });
-  }
   const allowRaw = obj(coverage["allowlist"]);
   const perOrg: Record<string, string[]> = {};
   for (const [org, list] of Object.entries(obj(allowRaw["per_org"]))) {
@@ -154,11 +142,10 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
   return {
     config: {
       instance: { name: name!, portalHost: portalHost! },
-      identity: { issuer: issuer!, clientId: clientId!, serviceTokenRef: serviceTokenRef! },
+      identity: { issuer: issuer!, clientId: clientId! },
       legal: { editions: { icla: iclaEd.files, ocla: oclaEd.files }, current: { icla: iclaEd.current!, ocla: oclaEd.current! } },
       github: { appSlug: appSlug!, dataRepo: dataRepo!, offlineRepo: offlineRepo!, dataInstallationId: dataInstallationId! },
       coverage: {
-        staffRoles,
         allowlist: { global: lowerAll(allowRaw["global"]), perOrg },
         reposWithoutCla,
         commentSigning: { automatic: bool(commentSigning["automatic"]) ?? false },

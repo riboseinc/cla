@@ -58,6 +58,19 @@ describe("ICLA signing", () => {
     ).toBe(400);
   });
 
+  it("an empty legal name refuses the signature — the typed name IS the signature", async () => {
+    const a = app();
+    const res = await a.request("/icla/sign", {
+      method: "POST",
+      headers: authed(),
+      body: new URLSearchParams({ terms: "on", past: "yes", csrf, name: "   ", email: "johannes@mtg.example" }),
+    });
+    expect(res.status).toBe(400);
+    const out = (await res.json()) as { error: string };
+    expect(out.error).toContain("it is the signature");
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/icla/"))).toBe(false);
+  });
+
   it("signing appends the record bound to the current edition with the election recorded", async () => {
     const res = await app().request("/icla/sign", {
       method: "POST",
@@ -90,7 +103,7 @@ describe("ICLA signing", () => {
     const res = await app().request("/icla/sign", {
       method: "POST",
       headers: authed(),
-      body: new URLSearchParams({ terms: "on", past_declined: "yes", csrf }),
+      body: new URLSearchParams({ terms: "on", past_declined: "yes", csrf, name: "Johannes Roth" }),
     });
     expect(res.status).toBe(200);
     expect(((await res.json()) as Record<string, unknown>)["past_contributions_included"]).toBe(false);

@@ -119,8 +119,8 @@ async function sign() {
         <section class="rounded-sm border border-rule bg-white dark:bg-ink-2 p-6">
           <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">signatory</h2>
           <div class="mt-4 grid gap-3 md:grid-cols-2">
-            <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Name</span>
-              <input v-model="signatoryName" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
+            <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Full legal name — typing it is your signature</span>
+              <input v-model="signatoryName" autocomplete="name" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 focus:border-brand-500 focus:outline-none" /></label>
             <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Corporate email</span>
               <input v-model="signatoryEmail" class="mt-1 w-full rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-sm focus:border-brand-500 focus:outline-none" /></label>
             <label class="text-sm"><span class="text-slate-500 dark:text-slate-400">Job title</span>
@@ -189,12 +189,20 @@ async function sign() {
         <p v-if="error" class="rounded-sm border border-accent-600/40 bg-accent-600/10 px-3 py-2 text-sm text-accent-600 dark:text-accent-400" role="alert">{{ error }}</p>
 
         <div class="border-t border-rule pt-5">
+          <div class="rounded-sm border border-rule bg-paper px-4 py-3 text-paper-ink" aria-live="polite">
+            <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-paper-ink/60">Signature — for {{ orgName || "the organization" }}</p>
+            <p class="mt-1 font-serif text-xl italic" :class="signatoryName.trim() ? '' : 'text-paper-ink/30'">{{ signatoryName.trim() || "—" }}</p>
+            <p class="mt-1 text-xs leading-relaxed text-paper-ink/60">
+              Signed electronically by clicking below — this typed name, bound to your on-domain verified
+              mailbox and Ribose ID, is your signature under OCLA §4.
+            </p>
+          </div>
           <button
-            :disabled="!canSign || !gateOk"
-            class="w-full rounded-sm bg-brand-500 px-4 py-3 font-semibold text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="!canSign || !gateOk || !signatoryName.trim()"
+            class="mt-4 w-full rounded-sm bg-brand-500 px-4 py-3 font-semibold text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             @click="sign"
           >
-            Execute the OCLA
+            {{ signatoryName.trim() ? `Execute as ${signatoryName.trim()}` : "Execute the OCLA" }}
           </button>
           <p class="mt-2 text-center font-mono text-[11px] text-slate-500 dark:text-slate-400">· · · sign above the line · · ·</p>
         </div>

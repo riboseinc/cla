@@ -10,7 +10,6 @@ import { makeListRecords } from "../store/github-store";
 import { checkRunBody, createCheckRun, commentBody, upsertComment, postClosingComment, closingComment, preRegisterCheck, CHECK_NAME } from "./checks";
 import { signAttributionToken, optionKey } from "../portal/attribution";
 import { signCompletionToken, isAgreeCommand } from "../portal/completion";
-import { buildStaffMap } from "../identity/staff";
 
 /**
  * The pull_request orchestration (docs/design.md §5). Every store or
@@ -21,10 +20,6 @@ import { buildStaffMap } from "../identity/staff";
 export type EnforcementDeps = {
   api: GithubApi;
   config: AppConfig;
-  /** raw fetcher for the identity-service subject-roles lookups (issue #10) */
-  fetcher: FetchLike;
-  /** identity-service token; unset = no staff path at all (fail-closed) */
-  serviceToken?: string;
   /** HMAC secret for attribution-link tokens (the identity secret). */
   attributionSecret?: string;
 };
@@ -63,13 +58,7 @@ export async function evaluatePullRequest(
     { listRecords: makeListRecords(deps.api, deps.config.github.dataInstallationId, deps.config.github.dataRepo) },
     editions,
   );
-  // staff resolution via the identity service: login -> link -> subject -> roles
-  const { staffMap } = await buildStaffMap(
-    { fetcher: deps.fetcher, issuer: deps.config.identity.issuer, serviceToken: deps.serviceToken },
-    committers.flatMap((c) => (c.login ? [c.login] : [])),
-    loaded.links,
-  );
-  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers }, loaded.snapshot, deps.config, editions, staffMap);
+  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers }, loaded.snapshot, deps.config, editions);
 
   const portalBase = `https://${deps.config.instance.portalHost}`;
   // must-specify logins get per-option signed links through the portal
@@ -78,7 +67,7 @@ export async function evaluatePullRequest(
     if (!deps.attributionSecret) continue;
     const token = await signAttributionToken(deps.attributionSecret, { repo: full, pr: args.prNumber, login: loginL, installationId: args.installationId, options }, Date.now());
     attributionLinks[loginL] = options.map((o) => ({
-      label: o.kind === "icla" ? "Individual CLA" : o.kind === "staff" ? `staff (${o.org})` : `${o.orgSlug} OCLA`,
+      label: o.kind === "icla" ? "Individual CLA" : `${o.orgSlug} OCLA`,
       url: `${portalBase}/attribute?t=${token}&pick=${optionKey(o)}`,
     }));
   }
@@ -103,12 +92,7 @@ export async function closeMergedPullRequest(
     editions,
   );
   const { committers } = await fetchPrCommitters(deps.api, args.installationId, full, args.prNumber);
-  const { staffMap } = await buildStaffMap(
-    { fetcher: deps.fetcher, issuer: deps.config.identity.issuer, serviceToken: deps.serviceToken },
-    committers.flatMap((c) => (c.login ? [c.login] : [])),
-    loaded.links,
-  );
-  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers }, loaded.snapshot, deps.config, editions, staffMap);
+  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers }, loaded.snapshot, deps.config, editions);
 
   const elected: Record<string, AgreementRef> = {};
   for (const a of loaded.snapshot.attributions ?? []) {

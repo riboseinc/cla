@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { foldScheduleA, parseIcla, parseOcla, parseOclaMod, parseRevocation } from "../src/store/records";
 import { loadSnapshot, loadAndEvaluate } from "../src/store/load";
 import { sha256Hex, verifyEvidence } from "../src/store/evidence";
-import type { Editions, Committer, Config, StaffMap, PrInput } from "@riboseinc/cla-kernel";
+import type { Editions, Committer, Config, PrInput } from "@riboseinc/cla-kernel";
 
 const EDITIONS: Editions = {
   icla: { kind: "icla", version: "1.0", textSha256: "icla1sha" },
   ocla: { kind: "ocla", version: "1.0", textSha256: "ocla1sha" },
 };
 
-const CFG: Config = { coverage: { allowlist: { global: [], perOrg: {} }, staffRoles: [{ org: "ribose", role: "staff" }] } };
+const CFG: Config = { coverage: { allowlist: { global: [], perOrg: {} } } };
 
 describe("records: parsing fails closed", () => {
   it("an icla missing required fields is rejected", () => {
@@ -85,7 +85,6 @@ describe("loadSnapshot: the record tree becomes a kernel snapshot", () => {
       EDITIONS,
       { context: { org: "rnpgp", repo: "rnp" }, committers: [{ login: "tj-91" }, { login: "falko-strenzke" }] } as PrInput,
       CFG,
-      {} as StaffMap,
     );
     expect(v.verdict.verdict).toBe("pass");
     expect(v.verdict.committers[0]).toMatchObject({ status: "covered", path: "ocla" });
@@ -105,7 +104,7 @@ describe("loadSnapshot: the record tree becomes a kernel snapshot", () => {
     expect(snapshot.oclas[0]?.covered.map((r) => r.githubLogin)).toEqual(["a"]);
 
     const committer: Committer = { login: "b" };
-    const v = await loadAndEvaluate(fixture(files), EDITIONS, { context: { org: "o", repo: "r", pr: 1 }, committers: [committer] }, CFG, {});
+    const v = await loadAndEvaluate(fixture(files), EDITIONS, { context: { org: "o", repo: "r", pr: 1 }, committers: [committer] }, CFG);
     expect(v.verdict.committers[0]?.status).toBe("missing");
   });
 
@@ -126,7 +125,7 @@ describe("loadSnapshot: the record tree becomes a kernel snapshot", () => {
     const files = {
       "icla/2026/09/old.json": { id: "old", githubLogin: "a", claEdition: { kind: "icla", version: "0.9", textSha256: "oldsha" } },
     };
-    const v = await loadAndEvaluate(fixture(files), EDITIONS, { context: { org: "o", repo: "r", pr: 1 }, committers: [{ login: "a" }] }, CFG, {});
+    const v = await loadAndEvaluate(fixture(files), EDITIONS, { context: { org: "o", repo: "r", pr: 1 }, committers: [{ login: "a" }] }, CFG);
     expect(v.verdict.committers[0]?.status).toBe("missing");
   });
 });
