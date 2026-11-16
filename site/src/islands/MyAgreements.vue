@@ -156,7 +156,7 @@ const hashOf = (e: Edition) => e.textSha256.slice(0, 16) + "…";
       <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Elections recorded for pull requests</h2>
       <ul class="mt-3 space-y-2">
         <li v-for="a in attributions()" :key="a.repo + a.pr" class="rounded-sm border border-rule bg-white px-4 py-3 font-mono text-xs text-slate-600 dark:bg-ink-2 dark:text-slate-400">
-          {{ a.repo }}#{{ a.pr }} → {{ a.agreement?.kind }}
+          {{ a.repo }}#{{ a.pr }} — contributed under the {{ a.agreement?.kind === "icla" ? "Individual CLA" : "organization CLA" }}
         </li>
       </ul>
     </section>

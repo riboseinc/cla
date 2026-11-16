@@ -83,7 +83,7 @@ async function remove(login: string) {
     <p class="mt-4 text-sm text-slate-500 dark:text-slate-400">Organizations where you hold the admin role:</p>
     <ul class="mt-4 space-y-2">
       <li v-for="o in orgs" :key="o.slug">
-        <a :href="`/admin-orgs/${o.slug}`" class="block rounded-sm border border-rule bg-white dark:bg-ink-2 px-4 py-3 font-mono text-sm hover:border-brand-400">{{ o.slug }} →</a>
+        <a :href="`/admin-orgs/${o.slug}`" class="block rounded-sm border border-rule bg-white dark:bg-ink-2 px-4 py-3 font-mono text-sm hover:border-brand-400">{{ o.slug }}</a>
       </li>
     </ul>
     <p v-if="orgs.length === 0" class="text-sm text-slate-500 dark:text-slate-400">No admin grants — enroll via the link from your organization's signatory.</p>

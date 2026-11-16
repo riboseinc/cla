@@ -344,7 +344,7 @@ function observePaperEnd(): void {
         One signature covers Your contributions to <strong>all Ribose organizations on GitHub</strong> —
         your next pull request turns green on its own.
       </p>
-      <a href="/agreements" class="mt-6 inline-block text-sm text-brand-600 dark:text-brand-400 hover:underline">View my agreements →</a>
+      <a href="/agreements" class="mt-6 inline-block text-sm text-brand-600 dark:text-brand-400 hover:underline">View my agreements</a>
     </div>
   </template>
 

@@ -242,7 +242,7 @@ async function sign() {
         Send your Point of Contact this enrollment link (it expires in 14 days and is bound to their email):
       </p>
       <code class="mt-4 block break-all rounded-sm border border-rule bg-ink px-3 py-2 font-mono text-xs text-ink dark:text-white">{{ done.pocEnrollmentUrl }}</code>
-      <a href="/organizations" class="mt-6 inline-block text-sm text-brand-600 hover:underline dark:text-brand-400">Your organization is now listed →</a>
+      <a href="/organizations" class="mt-6 inline-block text-sm text-brand-600 hover:underline dark:text-brand-400">Your organization is now listed on the organizations page.</a>
     </div>
   </template>
 
