@@ -8,6 +8,10 @@ instance:
   # The contributor-facing signing instructions; linked from every
   # action-needed comment and check output.
   signing_docs_url: https://github.com/example/cla/blob/main/docs/SIGNING.md
+  # The internal roster's managers (issue #62); the roster is a
+  # management view and never grants coverage.
+  roster_managers:
+    - example-manager
 
 identity:
   issuer: https://id.example.org

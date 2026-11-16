@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 export type EditionFile = { version: string; file: string; text: string; sha256: string };
 
 export type AppConfig = {
-  instance: { name: string; portalHost: string; signingDocsUrl?: string };
+  instance: { name: string; portalHost: string; signingDocsUrl?: string; rosterManagers?: string[] };
   identity: { issuer: string; clientId: string };
   legal: {
     editions: { icla: EditionFile[]; ocla: EditionFile[] };
@@ -101,6 +101,7 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
   if (!name) errors.push({ path: "instance.name", message: "required" });
   if (!portalHost) errors.push({ path: "instance.portal_host", message: "required" });
   const signingDocsUrl = str(instance["signing_docs_url"]);
+  const rosterManagers = arr(instance["roster_managers"]).map((x) => str(x)).filter((x): x is string => Boolean(x)).map((x) => x.toLowerCase());
 
   const identity = obj(r["identity"]);
   const issuer = str(identity["issuer"]);
@@ -151,7 +152,7 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
 
   return {
     config: {
-      instance: { name: name!, portalHost: portalHost!, ...(signingDocsUrl ? { signingDocsUrl } : {}) },
+      instance: { name: name!, portalHost: portalHost!, ...(signingDocsUrl ? { signingDocsUrl } : {}), ...(rosterManagers.length > 0 ? { rosterManagers } : {}) },
       identity: { issuer: issuer!, clientId: clientId! },
       legal: { editions: { icla: iclaEd.files, ocla: oclaEd.files }, current: { icla: iclaEd.current!, ocla: oclaEd.current! } },
       github: { appSlug: appSlug!, dataRepo: dataRepo!, offlineRepo: offlineRepo!, dataInstallationId: dataInstallationId! },

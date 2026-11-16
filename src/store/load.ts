@@ -31,6 +31,9 @@ export type LoadedSnapshot = {
   links: LinkRecord[];
   /** ocla id -> PoC email (notify leg). */
   oclaPocs: Record<string, string | undefined>;
+  /** The internal roster's latest record (issue #62): a management
+   *  grouping only — it never grants coverage. */
+  roster?: { recordedAt: string; members: Array<{ login: string; role: string; name: string }> };
 };
 
 export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise<LoadedSnapshot> {
@@ -45,6 +48,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
   const revokedIds: string[] = [];
   const attributions: NonNullable<StoreSnapshot["attributions"]> = [];
   const thirdParties: NonNullable<StoreSnapshot["thirdParties"]> = [];
+  let roster: { recordedAt: string; members: Array<{ login: string; role: string; name: string }> } | undefined;
   const rejected: { path: string; reason: string }[] = [];
 
   const sorted = [...paths].sort(); // creation order: ts-encoded paths sort correctly
@@ -82,6 +86,15 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
     } else if (path.startsWith("attribution/")) {
       const r = parseAttribution(parsed);
       r ? attributions.push({ repo: r.repo, pr: r.pr, login: r.login, agreement: r.agreement as NonNullable<StoreSnapshot["attributions"]>[number]["agreement"] }) : rejected.push({ path, reason: "invalid attribution" });
+    } else if (path.startsWith("roster/")) {
+      const o = parsed as Record<string, unknown>;
+      const at = typeof o["recorded_at"] === "string" ? o["recorded_at"] : undefined;
+      const membersRaw = Array.isArray(o["members"]) ? o["members"] : [];
+      const members = membersRaw
+        .map((m) => m as Record<string, unknown>)
+        .map((m) => ({ login: typeof m["login"] === "string" ? m["login"] : "", role: typeof m["role"] === "string" ? m["role"] : "", name: typeof m["name"] === "string" ? m["name"] : "" }))
+        .filter((m) => m.login);
+      at && members.length > 0 && (!roster || at > roster.recordedAt) ? (roster = { recordedAt: at, members }) : rejected.push({ path, reason: "invalid roster" }) && undefined;
     } else if (path.startsWith("third_party/")) {
       const o = parsed as Record<string, unknown>;
       const repo = typeof o["repo"] === "string" ? o["repo"] : undefined;
@@ -114,6 +127,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
       thirdParties,
     },
     rejected,
+    roster,
     mods,
     roles: roles.filter((r) => !revoked.has(r.id)),
     links: links.filter((l) => !revoked.has(l.id)),

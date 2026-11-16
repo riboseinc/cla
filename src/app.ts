@@ -610,6 +610,78 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       return { session, snapshot, roles, mods: loaded.mods, ocla };
     };
 
+    // ---- the Ribose internal roster (issue #62): a management view,
+    // never a coverage path. Manager-gated; mutations audited. ----
+    const rosterManagerOf = (login: string): boolean =>
+      (GENERATED_CONFIG.instance.rosterManagers ?? []).includes(login.toLowerCase());
+
+    app.get("/roster", async (c) => {
+      const session = await ses(c);
+      if (!session) return c.json({ error: "sign in required" }, 401);
+      if (!rosterManagerOf(session.login)) return c.json({ error: "roster manager role required" }, 403);
+      const loaded = await loadSnapshot(
+        { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      const currentSha = kernelEditions(GENERATED_CONFIG).icla.textSha256;
+      const members = (loaded.roster?.members ?? []).map((m) => {
+        const login = m.login.toLowerCase();
+        const linked = loaded.links.some((l) => l.githubLogin.toLowerCase() === login);
+        const signedIcla = loaded.snapshot.iclas.filter((r) => r.githubLogin.toLowerCase() === login).sort((a, b) => (a.edition.textSha256 === currentSha ? -1 : b.edition.textSha256 === currentSha ? 1 : 0))[0];
+        const state = signedIcla
+          ? signedIcla.edition.textSha256 === currentSha
+            ? "signed"
+            : "stale"
+          : "outstanding";
+        return { ...m, login, linked, signed: state !== "outstanding", state, edition: signedIcla?.edition.version ?? null };
+      });
+      return c.json({
+        managers: GENERATED_CONFIG.instance.rosterManagers ?? [],
+        recordedAt: loaded.roster?.recordedAt ?? null,
+        members,
+      });
+    });
+
+    const rosterWrite = async (c: { req: { header: (h: string) => string | undefined }; req2?: unknown }, transform: (members: Array<{ login: string; role: string; name: string }>) => Array<{ login: string; role: string; name: string }>) => {
+      const session = await ses(c);
+      if (!session) return { error: "sign in required" as const, status: 401 as const };
+      if (!rosterManagerOf(session.login)) return { error: "roster manager role required" as const, status: 403 as const };
+      const loaded = await loadSnapshot(
+        { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      const members = transform(loaded.roster?.members ?? []);
+      await appendRecord(
+        { api: portalApi(env, fetcher, now), installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now },
+        "roster",
+        { id: randomToken(), members, recorded_at: new Date(now()).toISOString(), actor: session.login },
+      );
+      await audit(d1(env), { actor: session.login, action: "roster_update", target: "internal-roster", detail: `members=${members.length}`, at: new Date(now()).toISOString(), id: randomToken() });
+      return { ok: true as const, members };
+    };
+
+    app.post("/roster/add", async (c) => {
+      const form = await c.req.parseBody().catch(() => ({}));
+      if (!csrfOk(c.req.header("cookie"), (form as Record<string, unknown>)["csrf"] as string)) return c.json({ error: "csrf mismatch" }, 403);
+      const login = String((form as Record<string, unknown>)["login"] ?? "").trim().toLowerCase();
+      const role = String((form as Record<string, unknown>)["role"] ?? "") === "contractor" ? "contractor" : "staff";
+      const name = String((form as Record<string, unknown>)["name"] ?? "").trim();
+      if (!login) return c.json({ error: "login is required" }, 400);
+      const r = await rosterWrite(c, (members) => members.some((m) => m.login.toLowerCase() === login) ? members : [...members, { login, role, name }]);
+      if ("error" in r) return c.json({ error: r.error }, r.status);
+      return c.json({ added: login, members: r.members.length });
+    });
+
+    app.post("/roster/remove", async (c) => {
+      const form = await c.req.parseBody().catch(() => ({}));
+      if (!csrfOk(c.req.header("cookie"), (form as Record<string, unknown>)["csrf"] as string)) return c.json({ error: "csrf mismatch" }, 403);
+      const login = String((form as Record<string, unknown>)["login"] ?? "").trim().toLowerCase();
+      if (!login) return c.json({ error: "login is required" }, 400);
+      const r = await rosterWrite(c, (members) => members.filter((m) => m.login.toLowerCase() !== login));
+      if ("error" in r) return c.json({ error: r.error }, r.status);
+      return c.json({ removed: login, members: r.members.length });
+    });
+
     app.get("/admin-orgs", async (c) => {
       const session = await ses(c);
       if (!session) return c.json({ error: "sign in required" }, 401);
