@@ -129,6 +129,19 @@ describe("must-specify links + election + closing statement", () => {
     await app.request("/api/github/webhook", { method: "POST", body, headers: { ...headers, "x-github-event": "pull_request" } });
     expect(fx.calls.filter((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments")).length).toBe(n);
   });
+
+  it("a clean merge is silent: no closing comment when everyone is pre-covered and no elections exist", async () => {
+    const app = createApp(ENV(pem), { fetcher: fx.fetcher });
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1/commits", () =>
+      Response.json([{ author: { login: "falko-strenzke", type: "User" }, commit: { author: { email: "falko@mtg.example" } } }], { status: 200 }),
+    );
+    const merged = { ...pullRequestPayload(), action: "closed", pull_request: { merged: true, head: { sha: "abc123" } } };
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, merged);
+    const res = await app.request("/api/github/webhook", { method: "POST", body, headers: { ...headers, "x-github-event": "pull_request" } });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Record<string, unknown>)["closing"]).toBe(false);
+    expect(fx.calls.some((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments"))).toBe(false);
+  });
 });
 
 describe("hmac helper sanity", () => {

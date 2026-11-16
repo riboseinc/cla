@@ -104,6 +104,14 @@ export async function closeMergedPullRequest(
   for (const a of loaded.snapshot.attributions ?? []) {
     if (a.pr === args.prNumber && a.repo.toLowerCase() === full.toLowerCase() && !elected[a.login]) elected[a.login] = a.agreement;
   }
+  // Silence on a clean merge: the green check on the merge commit is the
+  // record, and a closing comment that re-mentions every covered committer
+  // is noise on every single merge. The closing statement posts only when
+  // it carries real information — elections recorded during review, or a
+  // gap (someone merged without coverage, or an unresolved election).
+  const hasElections = Object.keys(elected).length > 0;
+  const hasGaps = verdict.missing.length > 0 || Object.keys(verdict.mustSpecify).length > 0;
+  if (!hasElections && !hasGaps) return { posted: false };
   await postClosingComment(deps.api, args.installationId, full, args.prNumber, closingComment(verdict, elected));
   return { posted: true };
 }
