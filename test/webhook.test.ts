@@ -155,6 +155,42 @@ describe("POST /api/github/webhook: pull_request opened", () => {
     expect(fx.calls.some((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments"))).toBe(false);
   });
 
+  it("stays silent when every committer is covered: no comment is created (the check is the record)", async () => {
+    const pem = await makeKeyPem();
+    const fx: Fixture = makeFixture();
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1/commits", () =>
+      Response.json([{ author: { login: "falko-strenzke", type: "User" }, commit: { author: { email: "falko@mtg.example" } } }], { status: 200 }),
+    );
+    const app = createApp({ WEBHOOK_SECRET, GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem }, { fetcher: fx.fetcher });
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, pullRequestPayload());
+    const res = await app.request("/api/github/webhook", { method: "POST", body, headers });
+
+    expect(res.status).toBe(200);
+    const check = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/repos/rnpgp/rnp/check-runs"));
+    expect(check!.body).toMatchObject({ name: CHECK_NAME, conclusion: "success" });
+    expect(fx.calls.some((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments"))).toBe(false);
+    expect(fx.calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  it("retracts a stale action-needed comment once everyone is covered (no re-mentioning)", async () => {
+    const pem = await makeKeyPem();
+    const fx: Fixture = makeFixture();
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1/commits", () =>
+      Response.json([{ author: { login: "falko-strenzke", type: "User" }, commit: { author: { email: "falko@mtg.example" } } }], { status: 200 }),
+    );
+    fx.routes.set("/repos/rnpgp/rnp/issues/1/comments", () =>
+      Response.json([{ id: 99, body: `${COMMENT_MARKER}\nmerge blocked: @tj-91 missing`, user: { login: "ribose-cla[bot]" } }], { status: 200 }),
+    );
+    const app = createApp({ WEBHOOK_SECRET, GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem }, { fetcher: fx.fetcher });
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, pullRequestPayload());
+    const res = await app.request("/api/github/webhook", { method: "POST", body, headers });
+
+    expect(res.status).toBe(200);
+    expect(fx.calls.some((c) => c.method === "DELETE" && c.url.includes("/issues/comments/99"))).toBe(true);
+    expect(fx.calls.some((c) => c.method === "PATCH")).toBe(false);
+    expect(fx.calls.some((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments"))).toBe(false);
+  });
+
   it("data-store failure -> honest 503 (GitHub redelivers; never a fake pass)", async () => {
     const pem = await makeKeyPem();
     const fx: Fixture = makeFixture();

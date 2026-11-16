@@ -134,6 +134,29 @@ export async function upsertComment(
 }
 
 /**
+ * Silence when covered (the cla-assistant contract): the conversation
+ * comment exists to prompt action. When the verdict needs no action,
+ * the green check run is the record — and a comment left over from an
+ * earlier state is retracted, not edited into a table that re-mentions
+ * already-covered committers on every evaluation.
+ */
+export async function retractCoverageComment(
+  api: GithubApi,
+  installationId: number,
+  repoFullName: string,
+  prNumber: number,
+): Promise<boolean> {
+  const list = await api.request(installationId, "GET", `/repos/${repoFullName}/issues/${prNumber}/comments?per_page=100`);
+  if (list.status !== 200) throw new Error(`comment listing failed: ${list.status}`);
+  const comments = JSON.parse(list.body) as Array<{ id: number; body?: string; user?: { login?: string } }>;
+  const ours = comments.find((c) => typeof c.body === "string" && c.body.includes(COMMENT_MARKER) && c.user?.login?.endsWith("[bot]"));
+  if (!ours) return false;
+  const res = await api.request(installationId, "DELETE", `/repos/${repoFullName}/issues/comments/${ours.id}`);
+  if (res.status !== 204) throw new Error(`comment retraction failed: ${res.status}`);
+  return true;
+}
+
+/**
  * Pre-registration (docs/design.md §3.13): on installation/repo-added,
  * post a NEUTRAL `cla/ribose` run on the default branch HEAD so the
  * check name is requirable in branch protection immediately.

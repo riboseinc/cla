@@ -126,6 +126,7 @@ export function makeFixture(): Fixture {
     if (/\/issues\/\d+\/comments$/.test(u.pathname) && init?.method === "POST") return json(201, {});
     if (/\/issues\/\d+\/comments$/.test(u.pathname)) return json(200, []);
     if (/\/issues\/comments\/\d+$/.test(u.pathname) && init?.method === "PATCH") return json(200, {});
+    if (/\/issues\/comments\/\d+$/.test(u.pathname) && init?.method === "DELETE") return new Response(null, { status: 204 });
     return json(404, { message: "fixture has no route for " + u.pathname });
   };
 

@@ -7,7 +7,7 @@ import { loadSnapshot } from "../store/load";
 import { fetchPrCommitters } from "../github/pulls";
 import type { GithubApi } from "../github/api";
 import { makeListRecords } from "../store/github-store";
-import { checkRunBody, createCheckRun, commentBody, upsertComment, postClosingComment, closingComment, preRegisterCheck, CHECK_NAME } from "./checks";
+import { checkRunBody, createCheckRun, commentBody, conclusionFor, upsertComment, retractCoverageComment, postClosingComment, closingComment, preRegisterCheck, CHECK_NAME } from "./checks";
 import { signAttributionToken, optionKey } from "../portal/attribution";
 import { signCompletionToken, isAgreeCommand } from "../portal/completion";
 
@@ -72,7 +72,13 @@ export async function evaluatePullRequest(
     }));
   }
   await createCheckRun(deps.api, args.installationId, full, args.headSha, checkRunBody(verdict, portalBase));
-  await upsertComment(deps.api, args.installationId, full, args.prNumber, commentBody(verdict, portalBase, { attributionLinks }));
+  if (conclusionFor(verdict) === "success") {
+    // Silence when covered: the green required check is the record;
+    // a comment left over from an earlier missing-state is retracted.
+    await retractCoverageComment(deps.api, args.installationId, full, args.prNumber);
+  } else {
+    await upsertComment(deps.api, args.installationId, full, args.prNumber, commentBody(verdict, portalBase, { attributionLinks }));
+  }
   return { handled: true, outcome: `verdict=${verdict.verdict} missing=${verdict.missing.length} specify=${Object.keys(verdict.mustSpecify).length}` };
 }
 
