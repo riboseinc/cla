@@ -765,6 +765,31 @@ ${links}
       return c.json({ voided: targetId, record: path });
     });
 
+    app.post("/admin/evaluate", async (c) => {
+      if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
+      const body = (await opsForm(c)) as Record<string, unknown>;
+      const repo = String(body["repo"] ?? "").trim();
+      const pr = Number(body["pr"]);
+      if (!/^[^/\s]+\/[^/\s]+$/.test(repo) || !Number.isInteger(pr) || pr <= 0) {
+        return c.json({ error: "repo (owner/name) and pr are required" }, 400);
+      }
+      const api = portalApi(env, fetcher, now);
+      const inst = await api.appRequest("GET", `/repos/${repo}/installation`);
+      if (inst.status !== 200) return c.json({ error: `the app is not installed on ${repo} (${inst.status})` }, 400);
+      const installationId = (JSON.parse(inst.body) as { id?: number }).id;
+      if (!installationId) return c.json({ error: "installation lookup returned no id" }, 400);
+      let headSha = typeof body["head_sha"] === "string" ? (body["head_sha"] as string) : undefined;
+      if (!headSha) {
+        const prRes = await api.request(installationId, "GET", `/repos/${repo}/pulls/${pr}`);
+        if (prRes.status !== 200) return c.json({ error: `pull request lookup failed (${prRes.status})` }, 400);
+        headSha = (JSON.parse(prRes.body) as { head?: { sha?: string } }).head?.sha;
+      }
+      if (!headSha) return c.json({ error: "the pull request has no head sha" }, 400);
+      const r = await evaluatePullRequest({ api, config: GENERATED_CONFIG, attributionSecret: env.OIDC_CLIENT_SECRET }, { installationId, repoFullName: repo, prNumber: pr, headSha });
+      await ops(c, "evaluate", `${repo}#${pr}`, r.outcome);
+      return c.json({ ok: true, ...r });
+    });
+
     app.post("/admin/preregister", async (c) => {
       if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
       const body = (await opsForm(c)) as Record<string, unknown>;

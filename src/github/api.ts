@@ -139,4 +139,18 @@ export class GithubApi {
     }
     return { status: res.status, body, notModified: false };
   }
+
+  /** An app-JWT-authenticated request (repo->installation lookup, app-level listings). */
+  async appRequest(method: string, path: string): Promise<{ status: number; body: string }> {
+    const res = await this.fetcher(`https://api.github.com${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${await this.appJwt()}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "ribose-cla",
+      },
+    });
+    return { status: res.status, body: await res.text() };
+  }
 }

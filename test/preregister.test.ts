@@ -152,3 +152,34 @@ describe("ops backfill: resumable over the whole installation", () => {
     expect((await post("/admin/preregister", {})).status).toBe(400);
   });
 });
+
+describe("POST /admin/evaluate: on-demand re-evaluation of one PR", () => {
+  it("re-evaluates now: resolves the installation, evaluates the PR head, posts the check", async () => {
+    fx.routes.set("/repos/rnpgp/rnp/installation", () => Response.json({ id: 42 }, { status: 200 }));
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1", () => Response.json({ head: { sha: "abc123" } }, { status: 200 }));
+
+    const res = await post("/admin/evaluate", { repo: "rnpgp/rnp", pr: 1 });
+    expect(res.status).toBe(200);
+    const out = (await res.json()) as Record<string, unknown>;
+    expect(out["ok"]).toBe(true);
+    expect(out["handled"]).toBe(true);
+    const check = checkRunsPosted().find((c) => c.url.endsWith("/repos/rnpgp/rnp/check-runs"));
+    expect(check).toBeDefined();
+    expect(check!.body).toMatchObject({ name: CHECK_NAME, head_sha: "abc123" });
+  });
+
+  it("an explicit head_sha skips the pull request lookup", async () => {
+    fx.routes.set("/repos/rnpgp/rnp/installation", () => Response.json({ id: 42 }, { status: 200 }));
+    const res = await post("/admin/evaluate", { repo: "rnpgp/rnp", pr: 1, head_sha: "given-sha" });
+    expect(res.status).toBe(200);
+    const check = checkRunsPosted().find((c) => c.url.endsWith("/repos/rnpgp/rnp/check-runs"));
+    expect(check!.body).toMatchObject({ head_sha: "given-sha" });
+  });
+
+  it("fail-closed guards: bad token -> 403, missing fields -> 400, uninstalled repo -> 400", async () => {
+    expect((await post("/admin/evaluate", { repo: "rnpgp/rnp", pr: 1 }, false)).status).toBe(403);
+    expect((await post("/admin/evaluate", { repo: "not-a-repo" })).status).toBe(400);
+    fx.routes.set("/repos/nowhere/all", () => new Response("nope", { status: 404 }));
+    expect((await post("/admin/evaluate", { repo: "nowhere/all", pr: 1 })).status).toBe(400);
+  });
+});
