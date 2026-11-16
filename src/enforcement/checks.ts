@@ -16,7 +16,7 @@ export function conclusionFor(verdict: PrVerdict): "success" | "failure" | "acti
   return Object.keys(verdict.mustSpecify).length > 0 ? "action_required" : "success";
 }
 
-export function checkRunBody(verdict: PrVerdict, portalBase: string): Record<string, unknown> {
+export function checkRunBody(verdict: PrVerdict, portalBase: string, signingDocsUrl?: string): Record<string, unknown> {
   const lines: string[] = [];
   for (const c of verdict.committers) {
     if (c.status === "covered") {
@@ -25,7 +25,7 @@ export function checkRunBody(verdict: PrVerdict, portalBase: string): Record<str
       const links = c.options.map((o) => (o.kind === "icla" ? "[Individual CLA]" : `[${o.orgSlug} OCLA]`)).join(" ");
       lines.push(`- @${c.login ?? "(unlinked)"} — covered by multiple agreements; **specify under which one this PR is contributed**: ${links}`);
     } else {
-      lines.push(`- @${c.login ?? "(unlinked)"} — **not covered**: [sign the Individual CLA](${portalBase}/icla) or [join your organization's OCLA](${portalBase}/organizations)`);
+      lines.push(`- @${c.login ?? "(unlinked)"} — **not covered**: [sign the Individual CLA](${portalBase}/icla)${signingDocsUrl ? ` ([how to sign](${signingDocsUrl}))` : ""} or [join your organization's OCLA](${portalBase}/organizations)`);
     }
   }
   const summary = lines.length > 0 ? lines.join("\n") : "No human committers to evaluate.";
@@ -54,7 +54,7 @@ export async function createCheckRun(
 export function commentBody(
   verdict: PrVerdict,
   portalBase: string,
-  opts: { notices?: string[]; attributionLinks?: Record<string, Array<{ label: string; url: string }>> } = {},
+  opts: { notices?: string[]; attributionLinks?: Record<string, Array<{ label: string; url: string }>>; signingDocsUrl?: string } = {},
 ): string {
   const rows: string[] = [];
   for (const c of verdict.committers) {
@@ -66,7 +66,7 @@ export function commentBody(
         .join(" · ");
       rows.push(`| @${c.login ?? "(unlinked)"} | **specify under which agreement this PR is contributed**: ${links} |`);
     } else {
-      rows.push(`| @${c.login ?? "(unlinked)"} | **missing** — [sign the ICLA](${portalBase}/icla) or [find your organization](${portalBase}/organizations) |`);
+      rows.push(`| @${c.login ?? "(unlinked)"} | **missing** — [sign the ICLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""} or [find your organization](${portalBase}/organizations) |`);
     }
   }
   return [
@@ -77,6 +77,7 @@ export function commentBody(
     "|---|---|",
     ...rows,
     ...(opts.notices?.length ? ["", ...opts.notices] : []),
+    ...(opts.signingDocsUrl ? ["", `New to this check? [How to sign the Ribose CLA](${opts.signingDocsUrl}) — one signature covers every Ribose organization.`] : []),
   ].join("\n");
 }
 

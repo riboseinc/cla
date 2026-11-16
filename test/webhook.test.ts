@@ -70,12 +70,16 @@ describe("comment body", () => {
       missing: ["new-dev"],
       mustSpecify: {},
     };
-    const body = commentBody(verdict, "https://cla.example.org");
+    const body = commentBody(verdict, "https://cla.example.org", { signingDocsUrl: "https://docs.example.org/signing" });
     expect(body).toContain(COMMENT_MARKER);
     expect(body).toContain("merge blocked");
     expect(body).toContain("mtg-ag");
     expect(body).toContain("https://cla.example.org/icla");
     expect(body).toContain(CHECK_NAME);
+    // The comment teaches, not just blocks: the how-to-sign link rides
+    // the missing row and a footer line.
+    expect(body).toContain("[how to sign](https://docs.example.org/signing)");
+    expect(body).toContain("[How to sign the Ribose CLA](https://docs.example.org/signing)");
   });
 });
 

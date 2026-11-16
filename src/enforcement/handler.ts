@@ -61,6 +61,7 @@ export async function evaluatePullRequest(
   const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers }, loaded.snapshot, deps.config, editions);
 
   const portalBase = `https://${deps.config.instance.portalHost}`;
+  const signingDocsUrl = deps.config.instance.signingDocsUrl;
   // must-specify logins get per-option signed links through the portal
   const attributionLinks: Record<string, Array<{ label: string; url: string }>> = {};
   for (const [loginL, options] of Object.entries(verdict.mustSpecify)) {
@@ -71,13 +72,13 @@ export async function evaluatePullRequest(
       url: `${portalBase}/attribute?t=${token}&pick=${optionKey(o)}`,
     }));
   }
-  await createCheckRun(deps.api, args.installationId, full, args.headSha, checkRunBody(verdict, portalBase));
+  await createCheckRun(deps.api, args.installationId, full, args.headSha, checkRunBody(verdict, portalBase, signingDocsUrl));
   if (conclusionFor(verdict) === "success") {
     // Silence when covered: the green required check is the record;
     // a comment left over from an earlier missing-state is retracted.
     await retractCoverageComment(deps.api, args.installationId, full, args.prNumber);
   } else {
-    await upsertComment(deps.api, args.installationId, full, args.prNumber, commentBody(verdict, portalBase, { attributionLinks }));
+    await upsertComment(deps.api, args.installationId, full, args.prNumber, commentBody(verdict, portalBase, { attributionLinks, signingDocsUrl }));
   }
   return { handled: true, outcome: `verdict=${verdict.verdict} missing=${verdict.missing.length} specify=${Object.keys(verdict.mustSpecify).length}` };
 }

@@ -44,7 +44,11 @@ none of them.
 
 ## Architecture & development
 
-See [`docs/design.md`](docs/design.md) for the complete design
+Contributors: [`docs/SIGNING.md`](docs/SIGNING.md) explains how to
+sign the CLA — both flows (existing Ribose ID account and automatic
+account creation from GitHub), with the full step list.
+
+See `docs/design.md` for the complete design
 (actors, flows, kernel, webhook mechanics, config/data schemas,
 fail-closed postures, rollout). Work is tracked in this repo's issues
 — start at the master tracker: #16.

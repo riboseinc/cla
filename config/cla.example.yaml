@@ -5,6 +5,9 @@
 instance:
   name: Example
   portal_host: cla.example.org
+  # The contributor-facing signing instructions; linked from every
+  # action-needed comment and check output.
+  signing_docs_url: https://github.com/example/cla/blob/main/docs/SIGNING.md
 
 identity:
   issuer: https://id.example.org
