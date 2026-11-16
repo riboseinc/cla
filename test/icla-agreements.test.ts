@@ -29,34 +29,10 @@ beforeEach(async () => {
 });
 
 describe("ICLA signing", () => {
-  it("fail-closed: unauthenticated 401", async () => {
-    expect((await app().request("/icla")).status).toBe(401);
-  });
-
-  it("the form carries the exact edition text, its hash, and BOTH required consents", async () => {
-    const res = await app().request("/icla", { headers: authed() });
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain(GENERATED_CONFIG.legal.current.icla);
-    expect(html).toContain("sha256");
-    expect(html).toContain("ALL my previous contributions");
-    expect(html).toContain('name="terms" required');
-    expect(html).toContain('name="past"');
-    expect(html).toContain('name="name"');
-    expect(html).toContain('name="email"');
-    expect(html).toContain('name="country"');
-    expect(html).toContain(`value="${csrf}"`);
-  });
-
-  it("serving the form arms a script-readable CSRF cookie that the form echoes", async () => {
-    // The double-submit's token must be readable by the page's own script:
-    // HttpOnly would hide it and every signing attempt would 403.
-    const res = await app().request("/icla", { headers: { cookie: `${SESSION_COOKIE}=${session}` } });
-    const setCookie = res.headers.get("set-cookie") ?? "";
-    expect(setCookie).not.toMatch(/HttpOnly/i);
-    const token = /cla_csrf=([^;]+)/.exec(setCookie)?.[1];
-    expect(token).toBeTruthy();
-    expect(await res.text()).toContain(`value="${token}"`);
+  it("fail-closed: unauthenticated 401 on the agreements view and the sign POST", async () => {
+    const a = app();
+    expect((await a.request("/agreements")).status).toBe(401);
+    expect((await a.request("/icla/sign", { method: "POST", body: new URLSearchParams({ terms: "on" }) })).status).toBe(401);
   });
 
   it("csrf mismatch -> 403; missing terms -> 400", async () => {

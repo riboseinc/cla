@@ -3,11 +3,12 @@
  *  consents → the signature line. Honest states throughout. */
 import { computed, nextTick, onMounted, ref } from "vue";
 
-type Phase = "checking" | "signin" | "form" | "done" | "error";
+type Phase = "checking" | "signin" | "form" | "signed" | "done" | "error";
 const phase = ref<Phase>("checking");
 const dark = ref(false);
 const bound = ref<{ github_login: string; email: string | null; email_verified: boolean } | null>(null);
 const edition = ref<{ version: string; sha256: string; text: string } | null>(null);
+const signedCurrent = ref<{ version: string; sha256: string } | null>(null);
 const terms = ref(false);
 const name = ref("");
 const altEmail = ref("");
@@ -49,18 +50,27 @@ onMounted(async () => {
     return;
   }
 
-  // /agreements returns {bound:{...}, email, email_verified, ...}
+  // /agreements returns {bound:{...}, email, email_verified, iclaSignatures, ...}
   const body = (await me.json()) as {
     bound?: { github_login?: string };
     name?: string | null;
     email?: string | null;
     email_verified?: boolean;
+    iclaSignatures?: Array<{ current: boolean; edition: { version: string; textSha256: string } }>;
   };
   bound.value = {
     github_login: body.bound?.github_login ?? "",
     email: body.email ?? null,
     email_verified: body.email_verified === true,
   };
+  const current = (body.iclaSignatures ?? []).find((s) => s.current);
+  if (current) {
+    // A live current-edition signature already exists: the form would
+    // only produce a duplicate record, so the page reports the state.
+    signedCurrent.value = { version: current.edition.version, sha256: current.edition.textSha256 };
+    phase.value = "signed";
+    return;
+  }
   name.value = (body.name ?? "").trim();
   phase.value = "form";
   void nextTick(observePaperEnd);
@@ -186,6 +196,39 @@ function observePaperEnd(): void {
             The signature line returns after both verifications complete.
           </p>
         </template>
+      </aside>
+    </div>
+  </template>
+
+  <!-- already signed: the record card replaces the form -->
+  <template v-else-if="phase === 'signed'">
+    <div class="grid gap-8 md:grid-cols-[minmax(0,1.9fr)_minmax(280px,1fr)]">
+      <div class="relative border-l-4 border-brand-400 bg-paper px-8 py-8 text-paper-ink">
+        <pre class="whitespace-pre-wrap font-serif text-[15px] leading-relaxed">{{ edition?.text }}</pre>
+        <p class="mt-6 font-mono text-xs text-paper-ink/60">ICLA v{{ edition?.version }} · sha256 {{ edition?.sha256 }} — end of the Agreement</p>
+      </div>
+      <aside class="space-y-4">
+        <h1 class="font-serif text-2xl font-semibold">Already signed</h1>
+        <div class="rounded-sm border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-900/30">
+          <p class="font-medium text-emerald-800 dark:text-emerald-300">
+            Your signature of the Individual Contributor License Agreement
+            v{{ signedCurrent?.version }} is on record.
+          </p>
+          <p class="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+            <span class="font-mono">@{{ bound?.github_login }}</span> — one signature covers your
+            contributions to all Ribose organizations on GitHub. The exact
+            signed text and its hash are on your agreements page.
+          </p>
+        </div>
+        <p class="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+          You sign again only when counsel publishes a new edition of the
+          Agreement; enforcement tells you on the pull request when that
+          happens.
+        </p>
+        <a
+          href="/agreements"
+          class="inline-flex w-full items-center justify-center rounded-sm bg-ink dark:bg-white px-4 py-3 font-medium text-ink dark:text-white no-underline transition-colors hover:bg-white dark:hover:bg-slate-200"
+        >Open my agreements</a>
       </aside>
     </div>
   </template>

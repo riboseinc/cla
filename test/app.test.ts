@@ -32,29 +32,3 @@ describe("public editions", () => {
     expect(body["ocla"]!.textSha256).toBe(GENERATED_CONFIG.legal.editions.ocla[0]!.sha256);
   });
 });
-
-describe("the public landing", () => {
-  it("an unarmed deployment states it honestly (no fake links)", async () => {
-    const res = await createApp({}).request("/");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("charset=UTF-8");
-    const html = await res.text();
-    expect(html).toContain("awaiting GitHub App connection");
-    expect(html).not.toContain("/icla\">");
-  });
-
-  it("an armed deployment offers the sign-in surfaces", async () => {
-    const res = await createApp({
-      WEBHOOK_SECRET: "w",
-      APP_PRIVATE_KEY: "p",
-      GITHUB_APP_ID: "1",
-      OIDC_CLIENT_SECRET: "o",
-      GITHUB_APP_CLIENT_ID: "c",
-      GITHUB_APP_CLIENT_SECRET: "cs",
-    }).request("/");
-    const html = await res.text();
-    expect(html).toContain("operational");
-    expect(html).toContain('href="/icla"');
-    expect(html).toContain('href="/organizations"');
-  });
-});

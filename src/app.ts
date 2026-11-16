@@ -65,31 +65,10 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
     return c.json({ kind, version: c.req.param("version"), sha256: e.sha256, text: e.text });
   });
 
-  // The public landing: an HONEST statement of what is armed. Dark
-  // surfaces say so — no fake links, no raw 404 for a human visitor.
-  const portalArmed = Boolean(env.OIDC_CLIENT_SECRET && env.GITHUB_APP_CLIENT_ID && env.GITHUB_APP_CLIENT_SECRET);
-  const enforcementArmed = Boolean(env.WEBHOOK_SECRET && env.APP_PRIVATE_KEY && env.GITHUB_APP_ID);
-  app.get("/", (c) => {
-    const name = GENERATED_CONFIG.instance.name;
-    const rows = [
-      `Enforcement (webhook + <code>cla/${GENERATED_CONFIG.github.appSlug === "TODO-stage-1" ? "ribose" : GENERATED_CONFIG.github.appSlug}</code> checks): ${enforcementArmed ? "<strong>operational</strong>" : "awaiting GitHub App connection"}`,
-      `Signing portal: ${portalArmed ? '<strong>operational</strong>' : 'awaiting GitHub App connection'}`,
-    ];
-    const links = portalArmed
-      ? `<ul>
-<li><a href="/icla">Sign the Individual CLA</a></li>
-<li><a href="/organizations">Join your organization's CLA</a></li>
-<li><a href="/agreements">My agreements</a></li>
-</ul>`
-      : `<p>Sign-in opens once the GitHub App is connected (setup in progress).</p>`;
-    return c.html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${name} — CLA</title></head>
-<body style="font-family:sans-serif;max-width:40em;margin:4em auto;line-height:1.5">
-<h1>${name} — Contributor License Agreements</h1>
-<ul>${rows.map((r) => `<li>${r}</li>`).join("")}</ul>
-${links}
-<p style="color:#666">Fail-closed posture: closed surfaces answer 404 and nothing is ever faked.</p>
-</body></html>`);
-  });
+  // The public landing, the ICLA page, and the OCLA execution page are
+  // the site's Astro islands (site/src/pages) — the wrapper routes
+  // every non-API path there. This Hono app serves the JSON APIs and
+  // the webhook only; there is no second serving layer.
 
   // ---- GitHub webhook (fail-closed: no secret configured -> closed) ----
   const webhookSecret = env.WEBHOOK_SECRET;
@@ -308,33 +287,6 @@ ${links}
     // served above the portal gate so the signing paper renders first.
     const iclaEdition = editionText(GENERATED_CONFIG, "icla", GENERATED_CONFIG.legal.current.icla)!;
 
-    app.get("/icla", async (c) => {
-      const session = await ses(c);
-      if (!session) return c.json({ error: "sign in required" }, 401);
-      const csrf = readCookie(c.req.header("cookie"), CSRF_COOKIE) ?? newCsrfToken();
-      c.header("Set-Cookie", `${CSRF_COOKIE}=${csrf}${csrfCookieOpts(8 * 3600)}`);
-      const html = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Sign the Individual CLA</title></head>
-<body>
-<h1>Individual Contributor License Agreement — v${GENERATED_CONFIG.legal.current.icla}</h1>
-<p>Signing as <strong>@${session.login}</strong>${session.email ? ` (${session.email}${session.emailVerified ? ", verified" : ", unverified"})` : ""}</p>
-<pre id="cla-text">${iclaEdition.text.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>
-<p>sha256: <code>${iclaEdition.sha256}</code></p>
-<form method="post" action="/icla/sign">
-<h2>Your details</h2>
-<label>Full name <input name="name" placeholder="Full legal name" required></label><br>
-<label>Email <input name="email" type="email" value="${session.email ?? ""}" required></label><br>
-<label>Alternate email (optional) <input name="alt_email" type="email"></label><br>
-<label>Country <input name="country" placeholder="Country of residence" required></label><br>
-<input type="hidden" name="csrf" value="${csrf}">
-<label><input type="checkbox" name="terms" required> I agree to the terms above (edition ${GENERATED_CONFIG.legal.current.icla}, sha256 ${iclaEdition.sha256})</label><br>
-<label><input type="checkbox" name="past" value="yes" required> This agreement includes ALL my previous contributions to Ribose projects</label><br>
-<button type="submit">Sign</button>
-</form>
-</body></html>`;
-      return c.html(html);
-    });
-
     app.post("/icla/sign", async (c) => {
       const session = await ses(c);
       if (!session) return c.json({ error: "sign in required" }, 401);
@@ -427,41 +379,6 @@ ${links}
       );
       return roles.some((r) => r.oclaId === oclaId && r.riboseSub === sub);
     };
-
-    app.get("/sign-ocla", async (c) => {
-      const session = await ses(c);
-      if (!session) return c.json({ error: "sign in required" }, 401);
-      const csrf = readCookie(c.req.header("cookie"), CSRF_COOKIE) ?? newCsrfToken();
-      c.header("Set-Cookie", `${CSRF_COOKIE}=${csrf}${csrfCookieOpts(8 * 3600)}`);
-      return c.html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Execute an Organization CLA</title></head><body>
-<h1>Organization CLA — v${GENERATED_CONFIG.legal.current.ocla}</h1>
-<p>Signing as <strong>@${session.login}</strong> (${session.email ?? "no email on account"}${session.emailVerified ? ", verified" : ", UNVERIFIED"})</p>
-<p><em>The signatory and the Point of Contact must hold a VERIFIED mailbox on a declared company domain (OCLA §4 puts signing authority on your representation; the on-domain mailbox is the app's integrity gate).</em></p>
-<pre id="ocla-text">${(editionText(GENERATED_CONFIG, "ocla", GENERATED_CONFIG.legal.current.ocla)!.text).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>
-<p>sha256: <code>${editionText(GENERATED_CONFIG, "ocla", GENERATED_CONFIG.legal.current.ocla)!.sha256}</code></p>
-<form method="post" action="/sign-ocla">
-<input type="hidden" name="csrf" value="${csrf}">
-<h2>Company</h2>
-<input name="org_name" placeholder="Legal name" required><br>
-<input name="org_address" placeholder="Address" required><br>
-<input name="org_country" placeholder="Country" required><br>
-<input name="domains" placeholder="email domains, comma-separated (e.g. mtg.example, mgt.example)" required><br>
-<h2>Signatory (you)</h2>
-<input name="signatory_name" placeholder="Your name" required><br>
-<input name="signatory_email" placeholder="Your corporate email (verified)" required><br>
-<input name="signatory_title" placeholder="Job title" required><br>
-<input name="signatory_github" placeholder="GitHub username (optional — N/A allowed)"><br>
-<h2>Point of Contact</h2>
-<input name="poc_name" placeholder="PoC name" required><br>
-<input name="poc_email" placeholder="PoC corporate email" required><br>
-<input name="poc_phone" placeholder="PoC phone"><br>
-<h2>Schedule A — designated employees (one per line: <code>github_login | Name | email | Job title</code>)</h2>
-<textarea name="schedule_a" rows="5" placeholder="tj-91 | Johannes Roth | johannes@mtg.example | Senior Software Developer"></textarea><br>
-<label><input type="checkbox" name="terms" required> I am authorized to bind this organization; we agree to the terms above (edition ${GENERATED_CONFIG.legal.current.ocla})</label><br>
-<label><input type="checkbox" name="past" value="yes"> This agreement includes ALL designated employees' previous contributions to Ribose projects</label><br>
-<button type="submit">Execute the OCLA</button>
-</form></body></html>`);
-    });
 
     app.post("/sign-ocla", async (c) => {
       const session = await ses(c);
