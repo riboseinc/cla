@@ -17,6 +17,20 @@ export function conclusionFor(verdict: PrVerdict): "success" | "failure" | "acti
 }
 
 export function checkRunBody(verdict: PrVerdict, portalBase: string, signingDocsUrl?: string): Record<string, unknown> {
+  // The proportionality control fired: the honest, visible disclosure —
+  // the check passes because the change is under the thresholds, never
+  // silently (issue #58).
+  if (verdict.minimalChange === true) {
+    return {
+      name: CHECK_NAME,
+      status: "completed",
+      conclusion: "success",
+      output: {
+        title: `CLA (${CHECK_NAME})`,
+        summary: "The change is under the minimal-change threshold, so the CLA was not enforced for this pull request. A larger change requires a signature.",
+      },
+    };
+  }
   const lines: string[] = [];
   for (const c of verdict.committers) {
     if (c.status === "covered") {
@@ -85,6 +99,16 @@ export function commentBody(
 export const CLOSING_MARKER = "<!-- ribose-cla:closing -->";
 
 export function closingComment(verdict: PrVerdict, elected: Record<string, AgreementRef>): string {
+  // The proportionality disclosure: the merged contribution landed
+  // without CLA coverage because the change was under the thresholds
+  // (issue #58) — attribution honesty, never silence.
+  if (verdict.minimalChange === true) {
+    return [
+      CLOSING_MARKER,
+      "**CLA attribution for this merged contribution**",
+      "- The change was under the minimal-change threshold, so the CLA was not enforced. The contribution is attributed to its committers as visible in history.",
+    ].join("\n");
+  }
   const lines = Object.keys(elected).length > 0 ? ["", "Elections recorded during review:"] : [];
   for (const [login, a] of Object.entries(elected)) {
     lines.push(`- @${login} — under ${a.kind === "icla" ? `the Individual CLA v${a.version}` : `the ${a.orgSlug} OCLA v${a.version}`}`);

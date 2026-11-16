@@ -17,6 +17,7 @@ const EDITIONS: Editions = {
 
 const config = (over: Partial<Config["coverage"]> = {}): Config => ({
   coverage: {
+    ...over,
     allowlist: { global: [], perOrg: {}, ...over.allowlist },
   },
 });
@@ -256,5 +257,43 @@ describe("kernel: bots and PR verdicts", () => {
       EDITIONS,
     );
     expect(v.committers.map((c) => c.login)).toEqual(["zeta", "alpha"]);
+  });
+});
+
+describe("minimal change (proportionality, issue #58)", () => {
+  const withDiff = (diff?: { files: number; codeLines: number }): PrInput => ({
+    ...pr([login("stranger")]),
+    ...(diff ? { diff } : {}),
+  });
+
+  it("under BOTH thresholds: passes without coverage, disclosed", () => {
+    const v = evaluate(withDiff({ files: 2, codeLines: 9 }), snapshot(), config({ minimalChange: { files: 3, codeLines: 10 } }), EDITIONS);
+    expect(v.verdict).toBe("pass");
+    expect(v.minimalChange).toBe(true);
+    expect(v.missing).toEqual([]);
+  });
+
+  it("at the thresholds (inclusive) still skips", () => {
+    const v = evaluate(withDiff({ files: 3, codeLines: 10 }), snapshot(), config({ minimalChange: { files: 3, codeLines: 10 } }), EDITIONS);
+    expect(v.minimalChange).toBe(true);
+  });
+
+  it("over EITHER threshold: enforcement applies (missing committer fails)", () => {
+    const overFiles = evaluate(withDiff({ files: 4, codeLines: 1 }), snapshot(), config({ minimalChange: { files: 3, codeLines: 10 } }), EDITIONS);
+    expect(overFiles.verdict).toBe("fail");
+    expect(overFiles.minimalChange).toBeUndefined();
+    const overLines = evaluate(withDiff({ files: 1, codeLines: 11 }), snapshot(), config({ minimalChange: { files: 3, codeLines: 10 } }), EDITIONS);
+    expect(overLines.verdict).toBe("fail");
+  });
+
+  it("OFF by default: the same tiny PR enforces", () => {
+    const v = evaluate(withDiff({ files: 1, codeLines: 1 }), snapshot(), config(), EDITIONS);
+    expect(v.verdict).toBe("fail");
+    expect(v.minimalChange).toBeUndefined();
+  });
+
+  it("no diff stats available: enforcement applies", () => {
+    const v = evaluate(withDiff(undefined), snapshot(), config({ minimalChange: { files: 3, codeLines: 10 } }), EDITIONS);
+    expect(v.verdict).toBe("fail");
   });
 });

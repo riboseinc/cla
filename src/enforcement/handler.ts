@@ -4,7 +4,7 @@ import { evaluate } from "@riboseinc/cla-kernel";
 import type { AppConfig } from "../config";
 import { kernelEditions } from "../config";
 import { loadSnapshot } from "../store/load";
-import { fetchPrCommitters } from "../github/pulls";
+import { fetchPrCommitters, fetchPrStats } from "../github/pulls";
 import type { GithubApi } from "../github/api";
 import { makeListRecords } from "../store/github-store";
 import { checkRunBody, createCheckRun, commentBody, conclusionFor, upsertComment, retractCoverageComment, postClosingComment, closingComment, preRegisterCheck, CHECK_NAME } from "./checks";
@@ -38,6 +38,7 @@ export async function evaluatePullRequest(
   }
 
   const { committers, truncated } = await fetchPrCommitters(deps.api, args.installationId, full, args.prNumber);
+  const diff = await fetchPrStats(deps.api, args.installationId, full, args.prNumber);
   if (truncated) {
     // Honest truncation: >250 commits is beyond the pulls endpoint cap —
     // never evaluate a partial authorship set as if it were whole.
@@ -58,7 +59,7 @@ export async function evaluatePullRequest(
     { listRecords: makeListRecords(deps.api, deps.config.github.dataInstallationId, deps.config.github.dataRepo) },
     editions,
   );
-  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers }, loaded.snapshot, deps.config, editions);
+  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers, diff }, loaded.snapshot, deps.config, editions);
 
   const portalBase = `https://${deps.config.instance.portalHost}`;
   const signingDocsUrl = deps.config.instance.signingDocsUrl;
@@ -99,7 +100,8 @@ export async function closeMergedPullRequest(
     editions,
   );
   const { committers } = await fetchPrCommitters(deps.api, args.installationId, full, args.prNumber);
-  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers }, loaded.snapshot, deps.config, editions);
+  const diff = await fetchPrStats(deps.api, args.installationId, full, args.prNumber);
+  const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers, diff }, loaded.snapshot, deps.config, editions);
 
   const elected: Record<string, AgreementRef> = {};
   for (const a of loaded.snapshot.attributions ?? []) {
@@ -111,7 +113,7 @@ export async function closeMergedPullRequest(
   // it carries real information — elections recorded during review, or a
   // gap (someone merged without coverage, or an unresolved election).
   const hasElections = Object.keys(elected).length > 0;
-  const hasGaps = verdict.missing.length > 0 || Object.keys(verdict.mustSpecify).length > 0;
+  const hasGaps = verdict.missing.length > 0 || Object.keys(verdict.mustSpecify).length > 0 || verdict.minimalChange === true;
   if (!hasElections && !hasGaps) return { posted: false };
   await postClosingComment(deps.api, args.installationId, full, args.prNumber, closingComment(verdict, elected));
   return { posted: true };

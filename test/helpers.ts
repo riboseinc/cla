@@ -120,6 +120,7 @@ export function makeFixture(): Fixture {
         encoding: "base64",
       });
     }
+    if (/\/repos\/rnpgp\/rnp\/pulls\/\d+$/.test(u.pathname)) return json(200, { changed_files: 12, additions: 200, deletions: 100, head: { sha: "abc123" } });
     // write-endpoint defaults (tests assert on captured calls)
     if (u.pathname.endsWith("/check-runs") && init?.method === "POST") return json(201, {});
     if (u.pathname.includes("/contents/") && init?.method === "PUT") return json(201, { commit: { sha: "commit1" } });

@@ -39,8 +39,14 @@ coverage:
       example-org:
         - example-ci
   repos_without_cla: []
+  # The proportionality control (issue #58): a PR under BOTH thresholds
+  # skips CLA enforcement, visibly. Absent = OFF (the default).
+  minimal_change:
+    files: 3
+    code_lines: 10
   comment_signing:
     automatic: false
   notify:
     digest_threshold: 10
     from: notify.example.org
+

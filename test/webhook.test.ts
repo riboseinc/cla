@@ -307,3 +307,46 @@ describe("event parsing", () => {
     expect(parseEvent("pull_request", "not json")).toBeUndefined();
   });
 });
+
+describe("minimal change: honest disclosure (issue #58)", () => {
+  it("a PR under both thresholds passes with the visible disclosure, and no comment posts", async () => {
+    const pem = await makeKeyPem();
+    const fx: Fixture = makeFixture();
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1", () =>
+      Response.json({ changed_files: 2, additions: 6, deletions: 3, head: { sha: "abc123" } }, { status: 200 }),
+    );
+    const app = createApp({ WEBHOOK_SECRET, GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem }, { fetcher: fx.fetcher });
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, pullRequestPayload());
+    const res = await app.request("/api/github/webhook", { method: "POST", body, headers });
+
+    expect(res.status).toBe(200);
+    const out = (await res.json()) as { outcome: string };
+    expect(out.outcome).toContain("missing=0");
+    const check = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/repos/rnpgp/rnp/check-runs"));
+    expect(check!.body).toMatchObject({ conclusion: "success" });
+    expect((check!.body as Record<string, unknown>)["output"]).toMatchObject({
+      summary: expect.stringContaining("under the minimal-change threshold"),
+    });
+    expect(fx.calls.some((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments"))).toBe(false);
+  });
+
+  it("a merged minimal-change PR discloses the rule in the closing statement", async () => {
+    const pem = await makeKeyPem();
+    const fx: Fixture = makeFixture();
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1", () =>
+      Response.json({ changed_files: 1, additions: 2, deletions: 0, head: { sha: "abc123" } }, { status: 200 }),
+    );
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1/commits", () =>
+      Response.json([{ author: { login: "falko-strenzke", type: "User" }, commit: { author: { email: "falko@mtg.example" } } }], { status: 200 }),
+    );
+    const app = createApp({ WEBHOOK_SECRET, GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem }, { fetcher: fx.fetcher });
+    const merged = { ...pullRequestPayload(), action: "closed", pull_request: { merged: true, head: { sha: "abc123" } } };
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, merged);
+    const res = await app.request("/api/github/webhook", { method: "POST", body, headers: { ...headers, "x-github-event": "pull_request" } });
+
+    expect(res.status).toBe(200);
+    const closing = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments"));
+    expect(closing).toBeDefined();
+    expect((closing!.body as Record<string, unknown>)["body"]).toContain("under the minimal-change threshold");
+  });
+});

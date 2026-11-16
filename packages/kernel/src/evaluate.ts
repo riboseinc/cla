@@ -22,6 +22,9 @@ export type Committer = {
 export type PrInput = {
   context: { org: string; repo: string; pr: number };
   committers: Committer[];
+  /** The PR's size (files changed, additions+deletions) — the
+   *  proportionality control's input; the caller resolves it. */
+  diff?: { files: number; codeLines: number };
 };
 
 export type Editions = { icla: ClaEdition; ocla: ClaEdition };
@@ -29,6 +32,9 @@ export type Editions = { icla: ClaEdition; ocla: ClaEdition };
 export type Config = {
   coverage: {
     allowlist: { global: string[]; perOrg: Record<string, string[]> };
+    /** The proportionality control (issue #58): a PR under BOTH
+     *  thresholds skips CLA enforcement. OFF when absent. */
+    minimalChange?: { files: number; codeLines: number };
   };
 };
 
@@ -78,6 +84,10 @@ export type PrVerdict = {
   committers: CommitterVerdict[];
   missing: string[];
   mustSpecify: Record<string, AgreementRef[]>;
+  /** The proportionality control fired: the PR is under both
+   *  thresholds and CLA was not enforced. The check summary and the
+   *  closing statement must disclose this — never a silent pass. */
+  minimalChange?: boolean;
 };
 
 // ---- evaluation ----
@@ -125,6 +135,18 @@ function collectPaths(
 }
 
 export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions: Editions): PrVerdict {
+  // The proportionality control runs before coverage evaluation: a PR
+  // under BOTH thresholds skips enforcement, visibly (issue #58).
+  const mc = cfg.coverage.minimalChange;
+  if (
+    mc &&
+    pr.diff &&
+    pr.diff.files <= mc.files &&
+    pr.diff.codeLines <= mc.codeLines
+  ) {
+    return { verdict: "pass", committers: [], missing: [], mustSpecify: {}, minimalChange: true };
+  }
+
   const revoked = new Set(snap.revokedIds);
   const committers: CommitterVerdict[] = [];
   const missing: string[] = [];

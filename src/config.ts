@@ -27,6 +27,7 @@ export type AppConfig = {
   };
   coverage: {
     allowlist: { global: string[]; perOrg: Record<string, string[]> };
+    minimalChange?: { files: number; codeLines: number };
     reposWithoutCla: string[]; // "org/name"
     commentSigning: { automatic: boolean };
     notify: { digestThreshold: number; from: string };
@@ -133,6 +134,14 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
     perOrg[org] = lowered;
   }
   const reposWithoutCla = lowerAll(coverage["repos_without_cla"]).filter(isRepoRef);
+  // The proportionality control (issue #58): absent = OFF (the default).
+  const minimalRaw = obj(coverage["minimal_change"]);
+  const mcFiles = num(minimalRaw["files"]);
+  const mcLines = num(minimalRaw["code_lines"]);
+  const minimalChange = mcFiles !== undefined && mcLines !== undefined ? { files: mcFiles, codeLines: mcLines } : undefined;
+  if (minimalRaw["files"] !== undefined && minimalRaw["code_lines"] !== undefined && minimalChange === undefined) {
+    errors.push({ path: "coverage.minimal_change", message: "both files and code_lines must be numeric" });
+  }
   const commentSigning = obj(coverage["comment_signing"]);
   const notify = obj(coverage["notify"]);
   const digestThreshold = num(notify["digest_threshold"]) ?? 10;
@@ -148,6 +157,7 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
       github: { appSlug: appSlug!, dataRepo: dataRepo!, offlineRepo: offlineRepo!, dataInstallationId: dataInstallationId! },
       coverage: {
         allowlist: { global: lowerAll(allowRaw["global"]), perOrg },
+        ...(minimalChange ? { minimalChange } : {}),
         reposWithoutCla,
         commentSigning: { automatic: bool(commentSigning["automatic"]) ?? false },
         notify: { digestThreshold, from: notifyFrom ?? `${portalHost}` },

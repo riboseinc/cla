@@ -55,3 +55,16 @@ export async function fetchPrHeadSha(api: GithubApi, installationId: number, rep
   if (typeof sha !== "string") throw new Error("pull head carries no sha");
   return sha;
 }
+
+/** The PR's size (files changed, additions+deletions) — the
+ *  proportionality control's input (issue #58). */
+export async function fetchPrStats(api: GithubApi, installationId: number, repoFullName: string, prNumber: number): Promise<{ files: number; codeLines: number } | undefined> {
+  const res = await api.request(installationId, "GET", `/repos/${repoFullName}/pulls/${prNumber}`);
+  if (res.status !== 200) throw new Error(`pull lookup failed: ${res.status}`);
+  const pr = obj(JSON.parse(res.body));
+  const files = pr["changed_files"];
+  const additions = pr["additions"];
+  const deletions = pr["deletions"];
+  if (typeof files !== "number" || typeof additions !== "number" || typeof deletions !== "number") return undefined;
+  return { files, codeLines: additions + deletions };
+}
