@@ -63,11 +63,11 @@ onMounted(async () => {
     email: body.email ?? null,
     email_verified: body.email_verified === true,
   };
-  const current = (body.iclaSignatures ?? []).find((s) => s.current);
-  if (current) {
+  const currentSig = (body.iclaSignatures ?? []).find((s) => s.current);
+  if (currentSig) {
     // A live current-edition signature already exists: the form would
     // only produce a duplicate record, so the page reports the state.
-    signedCurrent.value = { version: current.edition.version, sha256: current.edition.textSha256 };
+    signedCurrent.value = { version: currentSig.edition.version, sha256: currentSig.edition.textSha256 };
     phase.value = "signed";
     return;
   }
