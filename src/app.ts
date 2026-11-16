@@ -197,6 +197,9 @@ ${links}
   // ---- Portal (fail-closed: identity secret + GitHub client id configured) ----
   if (env.OIDC_CLIENT_SECRET && env.GITHUB_APP_CLIENT_ID && env.GITHUB_APP_CLIENT_SECRET) {
     const cookieOpts = (maxAge: number) => `; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+    // The CSRF token is the double-submit's readable half: the page's own
+    // script must read it and echo it in the form, so no HttpOnly here.
+    const csrfCookieOpts = (maxAge: number) => `; Path=/; Secure; SameSite=Lax; Max-Age=${maxAge}`;
 
     app.get("/signin/github", async (c) => {
       const state = randomToken();
@@ -248,7 +251,7 @@ ${links}
 
       const csrf = newCsrfToken();
       c.header("Set-Cookie", `${SESSION_COOKIE}=${await makeSessionCookie(env.OIDC_CLIENT_SECRET!, { sub: claims.sub, login: flow["ghLogin"], githubId: Number(flow["ghId"]), email: typeof claims.email === "string" ? claims.email : undefined, emailVerified: claims.email_verified === true }, now())}${cookieOpts(8 * 3600)}`);
-      c.header("Set-Cookie", `${CSRF_COOKIE}=${csrf}${cookieOpts(8 * 3600)}`, { append: true });
+      c.header("Set-Cookie", `${CSRF_COOKIE}=${csrf}${csrfCookieOpts(8 * 3600)}`, { append: true });
       c.header("Set-Cookie", `cla_flow=; Path=/; HttpOnly; Max-Age=0`, { append: true });
       // a completion flow insists the proven handle is the invited login
       if (flow["tlogin"] && flow["tlogin"] !== flow["ghLogin"]) {
@@ -269,6 +272,8 @@ ${links}
     app.get("/agreements", async (c) => {
       const session = await ses(c);
       if (!session) return c.json({ error: "sign in required" }, 401);
+      const csrf = readCookie(c.req.header("cookie"), CSRF_COOKIE) ?? newCsrfToken();
+      c.header("Set-Cookie", `${CSRF_COOKIE}=${csrf}${csrfCookieOpts(8 * 3600)}`);
       const view = await signerView(env, fetcher, now, session.login);
       return c.json({
         bound: { ribose_id_sub: session.sub, github_login: session.login, github_id: session.githubId },
@@ -288,6 +293,7 @@ ${links}
       const session = await ses(c);
       if (!session) return c.json({ error: "sign in required" }, 401);
       const csrf = readCookie(c.req.header("cookie"), CSRF_COOKIE) ?? newCsrfToken();
+      c.header("Set-Cookie", `${CSRF_COOKIE}=${csrf}${csrfCookieOpts(8 * 3600)}`);
       const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Sign the Individual CLA</title></head>
 <body>
@@ -407,6 +413,7 @@ ${links}
       const session = await ses(c);
       if (!session) return c.json({ error: "sign in required" }, 401);
       const csrf = readCookie(c.req.header("cookie"), CSRF_COOKIE) ?? newCsrfToken();
+      c.header("Set-Cookie", `${CSRF_COOKIE}=${csrf}${csrfCookieOpts(8 * 3600)}`);
       return c.html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Execute an Organization CLA</title></head><body>
 <h1>Organization CLA — v${GENERATED_CONFIG.legal.current.ocla}</h1>
 <p>Signing as <strong>@${session.login}</strong> (${session.email ?? "no email on account"}${session.emailVerified ? ", verified" : ", UNVERIFIED"})</p>

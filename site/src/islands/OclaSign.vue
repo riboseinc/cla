@@ -24,6 +24,9 @@ const past = ref(false);
 const error = ref("");
 const done = ref<{ oclaId: string; orgSlug: string; coveredCount: number; pocEnrollmentUrl: string } | null>(null);
 
+/** Double-submit CSRF: the token cookie is readable by this page (never HttpOnly). */
+const csrfToken = (): string => document.cookie.match(/cla_csrf=([^;]+)/)?.[1] ?? "";
+
 const domainList = computed(() => domains.value.split(",").map((d) => d.trim().toLowerCase()).filter(Boolean));
 const sessionEmailDomain = computed(() => me.value?.email?.split("@")[1]?.toLowerCase());
 const gateOk = computed(() => Boolean(me.value?.emailVerified && sessionEmailDomain.value && domainList.value.includes(sessionEmailDomain.value)));
@@ -63,7 +66,7 @@ onMounted(async () => {
 async function sign() {
   error.value = "";
   const body = new URLSearchParams({
-    csrf: "",
+    csrf: csrfToken(),
     terms: "on",
     past: past.value ? "yes" : "",
     org_name: orgName.value,

@@ -19,6 +19,9 @@ const showCountry = ref(false);
 const error = ref("");
 const signedRecord = ref("");
 
+/** Double-submit CSRF: the token cookie is readable by this page (never HttpOnly). */
+const csrfToken = (): string => document.cookie.match(/cla_csrf=([^;]+)/)?.[1] ?? "";
+
 
 onMounted(async () => {
   const editions = await fetch("/api/editions").then((r) => r.json());
@@ -67,7 +70,7 @@ onMounted(async () => {
 async function sign() {
   error.value = "";
   const body = new URLSearchParams({
-    csrf: "",
+    csrf: csrfToken(),
     terms: "on",
     past: past.value ? "yes" : "",
     name: name.value,

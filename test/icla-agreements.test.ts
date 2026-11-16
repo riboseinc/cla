@@ -48,6 +48,17 @@ describe("ICLA signing", () => {
     expect(html).toContain(`value="${csrf}"`);
   });
 
+  it("serving the form arms a script-readable CSRF cookie that the form echoes", async () => {
+    // The double-submit's token must be readable by the page's own script:
+    // HttpOnly would hide it and every signing attempt would 403.
+    const res = await app().request("/icla", { headers: { cookie: `${SESSION_COOKIE}=${session}` } });
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).not.toMatch(/HttpOnly/i);
+    const token = /cla_csrf=([^;]+)/.exec(setCookie)?.[1];
+    expect(token).toBeTruthy();
+    expect(await res.text()).toContain(`value="${token}"`);
+  });
+
   it("csrf mismatch -> 403; missing terms -> 400", async () => {
     const a = app();
     expect(
@@ -112,6 +123,13 @@ describe("ICLA signing", () => {
 });
 
 describe("my agreements view", () => {
+  it("re-arms the CSRF cookie for the signing islands, script-readable", async () => {
+    const res = await app().request("/agreements", { headers: authed() });
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    expect(setCookie).toContain(`${CSRF_COOKIE}=${csrf}`);
+    expect(setCookie).not.toMatch(/HttpOnly/i);
+  });
+
   it("lists the signer's ICLA signatures and OCLA coverages with staleness flags", async () => {
     const res = await app().request("/agreements", { headers: authed() });
     expect(res.status).toBe(200);
