@@ -8,7 +8,6 @@ instance:
 identity:
   issuer: https://id.example.org
   client_id: cid
-  service_token_ref: SERVICE_TOKEN
 legal:
   editions:
     icla: { current: "1.0", files: { "1.0": "legal/icla/1.0.md" } }
