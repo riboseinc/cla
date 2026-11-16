@@ -85,6 +85,13 @@ async function sign() {
 }
 const canSign = computed(() => name.value.trim().length > 0 && readTheAgreement.value);
 
+// The signing conditions, as live ticks: the signer sees what is done
+// and what is left.
+const conditions = computed(() => [
+  { done: readTheAgreement.value, label: "Scroll down through the full Agreement" },
+  { done: name.value.trim().length > 0, label: "Write your full legal name" },
+]);
+
 // The legal-UI contract: the signature unlocks only after the end of
 // the instrument has actually been on screen — by scrolling the paper,
 // by scrolling the page, or because the document fits. The observer
@@ -196,7 +203,8 @@ function observePaperEnd(): void {
         ref="paperEl"
         class="relative border-l-4 border-brand-400 bg-paper px-8 py-8 text-paper-ink"
       >
-        <div v-if="!readTheAgreement" class="sticky top-0 z-10 -mx-8 mb-5 bg-brand-500 px-8 py-2.5 text-center text-sm font-medium text-white">
+        <div v-if="!readTheAgreement" class="fixed inset-x-0 top-16 z-30 bg-brand-500 px-6 py-2.5 text-center text-sm font-medium text-white">
+          <span class="mr-2 inline-block animate-pulse" aria-hidden="true">↓</span>
           Scroll down through the full Agreement — the AGREE button unlocks at its end.
         </div>
         <p
@@ -207,7 +215,7 @@ function observePaperEnd(): void {
         <p ref="endMarkEl" class="mt-6 font-mono text-xs text-paper-ink/60">ICLA v{{ edition?.version }} · sha256 {{ edition?.sha256 }} — end of the Agreement</p>
       </div>
 
-      <aside class="space-y-6 md:sticky md:top-24 md:self-start">
+      <aside class="space-y-5 md:sticky md:top-24 md:self-start">
         <div class="space-y-2 text-sm">
           <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">The record — Agreement §Identity</p>
           <div class="flex items-center justify-between gap-3 rounded-sm border border-rule bg-white dark:bg-ink-2 px-3 py-2">
@@ -224,12 +232,6 @@ function observePaperEnd(): void {
             <span class="text-slate-500 dark:text-slate-400">Name — type it; it is the signature</span>
             <input v-model="name" type="text" autocomplete="name" placeholder="Your full legal name" class="mt-1 w-full bg-transparent text-ink dark:text-white placeholder:text-slate-400 focus:outline-none" />
           </label>
-          <div v-if="!showAltEmail && !showCountry" class="pt-1">
-            <button type="button" class="text-xs text-brand-600 underline underline-offset-2 dark:text-brand-400" @click="showAltEmail = true">+ add alternative email</button>
-            <span class="mx-1 text-slate-400">·</span>
-            <button type="button" class="text-xs text-brand-600 underline underline-offset-2 dark:text-brand-400" @click="showCountry = true">+ add country</button>
-            <span class="text-xs text-slate-400">(both optional — Agreement §Identity records them when present)</span>
-          </div>
           <label v-if="showAltEmail" class="block rounded-sm border border-rule bg-white dark:bg-ink-2 px-3 py-2">
             <span class="text-slate-500 dark:text-slate-400">Alternative email</span>
             <input v-model="altEmail" type="email" placeholder="optional" class="mt-1 w-full bg-transparent text-ink dark:text-white placeholder:text-slate-400 focus:outline-none" />
@@ -238,32 +240,47 @@ function observePaperEnd(): void {
             <span class="text-slate-500 dark:text-slate-400">Country</span>
             <input v-model="country" type="text" placeholder="optional" class="mt-1 w-full bg-transparent text-ink dark:text-white placeholder:text-slate-400 focus:outline-none" />
           </label>
+          <p v-if="!showAltEmail || !showCountry" class="text-xs text-slate-500 dark:text-slate-400">
+            <button v-if="!showAltEmail" type="button" class="text-brand-600 underline underline-offset-2 dark:text-brand-400" @click="showAltEmail = true">+ add alternative email</button>
+            <span v-if="!showAltEmail && !showCountry" class="mx-1">·</span>
+            <button v-if="!showCountry" type="button" class="text-brand-600 underline underline-offset-2 dark:text-brand-400" @click="showCountry = true">+ add country</button>
+            <span class="text-slate-400"> (optional)</span>
+          </p>
         </div>
 
-        <p class="border-t border-rule pt-4 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-          The Agreement includes all your previous contributions to Ribose
-          projects. Clicking <strong class="text-ink dark:text-white">AGREE</strong>
-          signs it — edition {{ edition?.version }}.
+        <ul class="space-y-2 border-t border-rule pt-4 text-sm" aria-label="Signing conditions">
+          <li v-for="c in conditions" :key="c.label" class="flex items-center gap-2.5">
+            <span
+              :class="c.done ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-300 dark:text-slate-600'"
+              aria-hidden="true"
+            >{{ c.done ? "✓" : "○" }}</span>
+            <span :class="c.done ? 'text-ink dark:text-white' : 'text-slate-500 dark:text-slate-400'">{{ c.label }}</span>
+          </li>
+        </ul>
+
+        <p class="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+          The Agreement includes all previous contributions to Ribose
+          projects — edition {{ edition?.version }}.
+        </p>
+        <p class="border-t border-rule pt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+          If You are Ribose staff, or a party to an existing contractor or service
+          agreement with Ribose, this signature establishes solely the association
+          between Your GitHub account and this CLA system; it creates no additional
+          claims and does not modify, supersede, or otherwise affect any rights or
+          obligations arising under any such existing agreement.
         </p>
 
+
+        <button
+          :disabled="!canSign"
+          class="w-full rounded-sm bg-brand-500 px-4 py-3 font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          @click="sign"
+        >
+          AGREE
+        </button>
         <p v-if="error" class="rounded-sm border border-accent-600/40 bg-accent-600/10 px-3 py-2 text-sm text-accent-600 dark:text-accent-400" role="alert">{{ error }}</p>
 
-        <div class="border-t border-rule pt-5">
-          <p class="text-sm text-slate-500 dark:text-slate-400">
-            {{ name.trim() ? `Signing as ${name.trim()}` : "Type your full legal name — it is the signature" }}
-            · edition {{ edition?.version }}
-          </p>
-          <p v-if="!readTheAgreement" class="mt-2 text-center text-sm font-medium text-amber-600 dark:text-amber-400" aria-live="polite">
-            Scroll down through the full Agreement; the AGREE button unlocks at its end.
-          </p>
-          <button
-            :disabled="!canSign"
-            class="mt-3 w-full rounded-sm bg-brand-500 px-4 py-3 font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            @click="sign"
-          >
-            AGREE
-          </button>
-        </div>
+
       </aside>
     </div>
   </template>
