@@ -65,6 +65,9 @@ export type StoreSnapshot = {
   revokedIds: string[];
   /** Per-PR agreement elections: a stored choice resolves must-specify (docs/design.md §3.11). */
   attributions?: Array<{ repo: string; pr: number; login: string; agreement: AgreementRef }>;
+  /** Clause-7 declarations: the work is submitted on behalf of a named
+   *  third party; the contributor's own ICLA still gates coverage. */
+  thirdParties?: Array<{ repo: string; pr: number; login: string; name: string }>;
 };
 
 // ---- outputs ----

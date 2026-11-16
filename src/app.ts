@@ -5,13 +5,13 @@ import type { FetchLike } from "./github/api";
 import { GENERATED_CONFIG } from "./generated/config";
 import { parseEvent, verifyWebhookSignature, installationId, repoFullName } from "./github/webhook";
 import { GithubApi } from "./github/api";
-import { evaluatePullRequest, closeMergedPullRequest, handleAgreeCommand, preRegisterRepos, preRegisterInstallation, PRE_REGISTER_BATCH, type EnforcementDeps } from "./enforcement/handler";
+import { evaluatePullRequest, closeMergedPullRequest, handleAgreeCommand, handleThirdPartyCommand, preRegisterRepos, preRegisterInstallation, PRE_REGISTER_BATCH, type EnforcementDeps } from "./enforcement/handler";
 import { CHECK_NAME } from "./enforcement/checks";
 import { discover, authorizationRequest, exchangeCode, verifyIdToken, resetOidcCaches } from "./portal/oidc";
 import { githubAuthorizeUrl, exchangeGithubCode, fetchGithubUser, randomToken } from "./portal/github-oauth";
 import { SESSION_COOKIE, CSRF_COOKIE, makeSessionCookie, readSessionCookie, makeStateCookie, readStateCookie, newCsrfToken } from "./portal/session";
 import { readAttributionToken, optionKey } from "./portal/attribution";
-import { readCompletionToken, parseAgreeCommand } from "./portal/completion";
+import { readCompletionToken, parseAgreeCommand, parseThirdPartyCommand } from "./portal/completion";
 import { signEnrollmentToken, readEnrollmentToken } from "./portal/enroll";
 import { loadSnapshot } from "./store/load";
 import { makeListRecords } from "./store/github-store";
@@ -166,10 +166,12 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           if (!comment || !issue || !repo || !inst || typeof number !== "number" || !commenter || !prAuthor) {
             return c.json({ error: "payload missing expected fields" }, 400);
           }
-          if (!isPr || commenter.endsWith("[bot]") || !parseAgreeCommand(bodyText)) {
-            return c.json({ ok: true, ignored: "not an agree command on a PR" });
+          if (!isPr || commenter.endsWith("[bot]") || (!parseAgreeCommand(bodyText) && !parseThirdPartyCommand(bodyText))) {
+            return c.json({ ok: true, ignored: "not a command on a PR" });
           }
-          const r = await handleAgreeCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, prAuthor, body: bodyText });
+          const r = parseAgreeCommand(bodyText)
+            ? await handleAgreeCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, prAuthor, body: bodyText })
+            : await handleThirdPartyCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, prAuthor, body: bodyText });
           return c.json({ ok: true, replied: r.replied, reason: r.reason });
         }
         if (evt.event === "check_run" && evt.action === "rerequested") {

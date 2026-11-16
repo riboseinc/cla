@@ -78,3 +78,13 @@ export function parseAgreeCommand(body: string): AgreeCommand | undefined {
   }
   return undefined;
 }
+
+/** The clause-7 declaration command (issue #63): the whole comment,
+ *  case-insensitive — `@ribose-cla third-party: <name>`. */
+export const THIRD_PARTY_COMMAND = /^@ribose-cla third-party:\s*(.+)$/i;
+export function parseThirdPartyCommand(body: string): string | undefined {
+  const t = body.trim();
+  const m = THIRD_PARTY_COMMAND.exec(t);
+  const name = m?.[1]?.trim();
+  return name ? name : undefined;
+}

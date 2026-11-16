@@ -207,3 +207,48 @@ describe("issue_comment: @ribose-cla agree grammar (issue #57)", () => {
     expect(out["reason"]).toBe("no such organization");
   });
 });
+
+// ---- issue #63: @ribose-cla third-party: <name> ----
+
+describe("issue_comment: third-party declaration (issue #63)", () => {
+  const thirdPartyPayload = (commenter: string, name: string, isPr = true) =>
+    commentPayload(commenter, `@ribose-cla third-party: ${name}`, isPr);
+
+  it("a committer's declaration records append-only and replies with the obligations", async () => {
+    const res = await deliverComment(thirdPartyPayload("tj-91", "Example Corp"));
+    expect(res.status).toBe(200);
+    const out = (await res.json()) as Record<string, unknown>;
+    expect(out["replied"]).toBe(true);
+    expect(out["reason"]).toBe("third-party declaration recorded");
+
+    const put = fx.calls.find((c) => c.method === "PUT" && c.url.includes("/contents/third_party/"));
+    expect(put).toBeDefined();
+    const record = JSON.parse(Buffer.from((put!.body as Record<string, unknown>)["content"] as string, "base64").toString()) as Record<string, unknown>;
+    expect(record).toMatchObject({ repo: "rnpgp/rnp", pr: 1, login: "tj-91", name: "Example Corp" });
+
+    const reply = fx.calls.filter((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments")).at(-1);
+    const text = (reply!.body as Record<string, unknown>)["body"] as string;
+    expect(text).toContain("Submitted on behalf of a third-party: Example Corp");
+    expect(text).toContain("does not replace your own agreement");
+
+    // the conspicuous marking lands in the PR body (clause 7)
+    const patch = fx.calls.find((c) => c.method === "PATCH" && c.url.endsWith("/pulls/1"));
+    expect(patch).toBeDefined();
+    expect(((patch!.body as Record<string, unknown>)["body"] as string)).toContain("Submitted on behalf of a third-party: Example Corp");
+  });
+
+  it("a body that already carries the marking is left alone", async () => {
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1", () =>
+      Response.json({ head: { sha: "abc123" }, body: "work summary\\n\\nSubmitted on behalf of a third-party: Example Corp" }, { status: 200 }),
+    );
+    await deliverComment(thirdPartyPayload("tj-91", "Example Corp"));
+    expect(fx.calls.some((c) => c.method === "PATCH" && c.url.endsWith("/pulls/1"))).toBe(false);
+  });
+
+  it("non-committers are ignored; a declaration never grants coverage (the check still fails without a signature)", async () => {
+    const res = await deliverComment(thirdPartyPayload("random-person", "Example Corp"));
+    const out = (await res.json()) as Record<string, unknown>;
+    expect(out["replied"]).toBe(false);
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/third_party/"))).toBe(false);
+  });
+});

@@ -44,6 +44,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
   const links: LinkRecord[] = [];
   const revokedIds: string[] = [];
   const attributions: NonNullable<StoreSnapshot["attributions"]> = [];
+  const thirdParties: NonNullable<StoreSnapshot["thirdParties"]> = [];
   const rejected: { path: string; reason: string }[] = [];
 
   const sorted = [...paths].sort(); // creation order: ts-encoded paths sort correctly
@@ -81,6 +82,15 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
     } else if (path.startsWith("attribution/")) {
       const r = parseAttribution(parsed);
       r ? attributions.push({ repo: r.repo, pr: r.pr, login: r.login, agreement: r.agreement as NonNullable<StoreSnapshot["attributions"]>[number]["agreement"] }) : rejected.push({ path, reason: "invalid attribution" });
+    } else if (path.startsWith("third_party/")) {
+      const o = parsed as Record<string, unknown>;
+      const repo = typeof o["repo"] === "string" ? o["repo"] : undefined;
+      const pr = typeof o["pr"] === "number" ? o["pr"] : undefined;
+      const login = typeof o["login"] === "string" ? o["login"] : undefined;
+      const name = typeof o["name"] === "string" ? o["name"] : undefined;
+      repo && pr !== undefined && login && name
+        ? thirdParties.push({ repo, pr, login, name })
+        : rejected.push({ path, reason: "invalid third-party declaration" });
     }
     // link/ and role/ are portal inputs, not kernel inputs
   }
@@ -101,6 +111,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
       oclas: effectiveOclas,
       revokedIds, // kernel re-checks; harmless, keeps the revocation fact visible
       attributions,
+      thirdParties,
     },
     rejected,
     mods,

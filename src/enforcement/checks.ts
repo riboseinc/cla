@@ -98,7 +98,7 @@ export function commentBody(
 /** The closing statement on merge — the public attribution record (docs/design.md §3.11). */
 export const CLOSING_MARKER = "<!-- ribose-cla:closing -->";
 
-export function closingComment(verdict: PrVerdict, elected: Record<string, AgreementRef>): string {
+export function closingComment(verdict: PrVerdict, elected: Record<string, AgreementRef>, onBehalf?: string): string {
   // The proportionality disclosure: the merged contribution landed
   // without CLA coverage because the change was under the thresholds
   // (issue #58) — attribution honesty, never silence.
@@ -126,7 +126,8 @@ export function closingComment(verdict: PrVerdict, elected: Record<string, Agree
     if (c.status === "must-specify") return `- @${c.login ?? "(unlinked)"} — contributed under an election recorded during review`;
     return `- @${c.login ?? "(unlinked)"} — **merged without CLA coverage** (visible in history)`;
   });
-  return [CLOSING_MARKER, "**CLA attribution for this merged contribution**", ...rows, ...lines].join("\n");
+  const behalf = onBehalf ? ["", `- Contributed on behalf of a third party: **${onBehalf}** (declared under the Agreement's third-party clause)`] : [];
+  return [CLOSING_MARKER, "**CLA attribution for this merged contribution**", ...rows, ...lines, ...behalf].join("\n");
 }
 
 export async function postClosingComment(api: GithubApi, installationId: number, repoFullName: string, prNumber: number, body: string): Promise<void> {
