@@ -85,3 +85,35 @@ export async function audit(db: D1Like | undefined, entry: { actor: string; acti
     .bind(entry.id, entry.at, entry.actor, entry.action, entry.target ?? null, entry.detail ?? null)
     .run();
 }
+
+// ---- the write-back sweep queue (issue #59) ----
+
+export async function enqueueSweep(db: D1Like, login: string): Promise<void> {
+  await db
+    .prepare("INSERT INTO sweep_queue (login, queued_at, attempts, cursor) VALUES (?, ?, 0, NULL) ON CONFLICT (login) DO UPDATE SET queued_at = excluded.queued_at")
+    .bind(login.toLowerCase(), new Date().toISOString())
+    .run();
+}
+
+/** The oldest queued login, with its saved cursor (null = start fresh). */
+export async function claimSweep(db: D1Like): Promise<{ login: string; attempts: number; cursor: unknown } | undefined> {
+  const row = await db
+    .prepare("SELECT login, attempts, cursor FROM sweep_queue ORDER BY queued_at ASC LIMIT 1")
+    .bind()
+    .first<{ login: string; attempts: number; cursor: unknown }>();
+  return row ?? undefined;
+}
+
+export async function saveSweepCursor(db: D1Like, login: string, attempts: number, cursor: unknown): Promise<void> {
+  await db
+    .prepare("UPDATE sweep_queue SET attempts = ?, cursor = ? WHERE login = ?")
+    .bind(attempts, cursor === null ? null : JSON.stringify(cursor), login)
+    .run();
+}
+
+export async function completeSweep(db: D1Like, login: string): Promise<void> {
+  await db
+    .prepare("DELETE FROM sweep_queue WHERE login = ?")
+    .bind(login)
+    .run();
+}

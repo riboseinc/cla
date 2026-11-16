@@ -62,4 +62,11 @@ export default {
 
     return withCsp(await astroWorker.fetch(request, env, ctx));
   },
+
+  // The write-back sweep's cron tick (issue #59): one bounded drain
+  // step per invocation; the cursor persists in D1 between ticks.
+  async scheduled(controller, env, ctx) {
+    const { drainSweepStep } = await import("../src/enforcement/sweep");
+    ctx.waitUntil(drainSweepStep(env));
+  },
 };

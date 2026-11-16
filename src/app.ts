@@ -6,6 +6,7 @@ import { GENERATED_CONFIG } from "./generated/config";
 import { parseEvent, verifyWebhookSignature, installationId, repoFullName } from "./github/webhook";
 import { GithubApi } from "./github/api";
 import { evaluatePullRequest, closeMergedPullRequest, handleAgreeCommand, handleThirdPartyCommand, preRegisterRepos, preRegisterInstallation, PRE_REGISTER_BATCH, type EnforcementDeps } from "./enforcement/handler";
+import { enqueueSweepFor, drainSweepStep } from "./enforcement/sweep";
 import { CHECK_NAME } from "./enforcement/checks";
 import { discover, authorizationRequest, exchangeCode, verifyIdToken, resetOidcCaches } from "./portal/oidc";
 import { githubAuthorizeUrl, exchangeGithubCode, fetchGithubUser, randomToken } from "./portal/github-oauth";
@@ -356,6 +357,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           past_contributions_included: pastIncluded,
         },
       );
+      await enqueueSweepFor(env, [session.login]);
       return c.json({ signed: true, record: path, commit: commitSha, past_contributions_included: pastIncluded });
     });
 
@@ -416,6 +418,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         },
       };
       await evaluatePullRequest(deps, { installationId: tokenData.installationId, repoFullName: tokenData.repo, prNumber: tokenData.pr, headSha: sha });
+      await enqueueSweepFor(env, [session.login]);
       return c.json({ recorded: true, agreement: chosen });
     });
 
@@ -514,6 +517,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         source: "portal",
         riboseIdSub: session.sub,
       });
+      await enqueueSweepFor(env, covered.map((r) => r.githubLogin));
       const enrollToken = await signEnrollmentToken(env.OIDC_CLIENT_SECRET!, oclaId, pocEmail, now());
       for (const to of [signatoryEmail, pocEmail]) {
         await sendMail(
@@ -642,11 +646,13 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       if (!decision) return c.json({ error: "decision must be approve/reject" }, 400);
 
       let requesterEmail: string | undefined;
+      let approvedLogin: string | undefined;
       if (decision === "approved") {
         const pending = await pendingRequests(db, auth.ocla.id);
         const req = pending.find((r) => r.id === id);
         if (!req) return c.json({ error: "no such pending request" }, 404);
         requesterEmail = req.email ?? undefined;
+        approvedLogin = req.login;
         // the LEGAL outcome: an append-only Schedule-A addition, actor recorded
         await appendRecord({ api: portalApi(env, fetcher, now), installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "ocla-mod", {
           id: randomToken(),
@@ -661,6 +667,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         requesterEmail = pending.find((r) => r.id === id)?.email ?? undefined;
       }
       const ok = await decideRequest(db, id, decision, auth.session.sub, new Date(now()).toISOString());
+      if (decision === "approved" && approvedLogin) await enqueueSweepFor(env, [approvedLogin]);
       if (requesterEmail) {
         await sendMail(
           mailDeps(env, GENERATED_CONFIG.coverage.notify.from, false, fetcher),
@@ -693,6 +700,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         actorRiboseSub: auth.session.sub,
         reason: "direct add by PoC",
       });
+      await enqueueSweepFor(env, [u.login.toLowerCase()]);
       return c.json({ added: u.login.toLowerCase() });
     });
 
@@ -753,6 +761,14 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         at: new Date(now()).toISOString(),
       });
       await ops(c, "void", targetId, reason);
+      // Coverage changed for every login the voided record touched:
+      // an ICLA's signer, or an OCLA's whole Schedule A.
+      const affected = await loadSnapshot(
+        { listRecords: makeListRecords(api, GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      const hit = affected.snapshot.iclas.find((r) => r.id === targetId);
+      await enqueueSweepFor(env, hit ? [hit.githubLogin] : affected.snapshot.oclas.filter((o) => o.id === targetId).flatMap((o) => o.covered.map((r) => r.githubLogin)));
       return c.json({ voided: targetId, record: path });
     });
 
@@ -779,6 +795,13 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       const r = await evaluatePullRequest({ api, config: GENERATED_CONFIG, attributionSecret: env.OIDC_CLIENT_SECRET }, { installationId, repoFullName: repo, prNumber: pr, headSha });
       await ops(c, "evaluate", `${repo}#${pr}`, r.outcome);
       return c.json({ ok: true, ...r });
+    });
+
+    app.post("/admin/sweep", async (c) => {
+      if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
+      const r = await drainSweepStep(env, fetcher);
+      await ops(c, "sweep", r.drained ?? "queue-empty", `evaluated=${r.evaluated?.length ?? 0} failed=${r.failed?.length ?? 0} done=${r.done === true}`);
+      return c.json(r);
     });
 
     app.post("/admin/preregister", async (c) => {
