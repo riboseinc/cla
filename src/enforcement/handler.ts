@@ -4,12 +4,14 @@ import { evaluate } from "@riboseinc/cla-kernel";
 import type { AppConfig } from "../config";
 import { kernelEditions } from "../config";
 import { loadSnapshot } from "../store/load";
-import { fetchPrCommitters, fetchPrStats } from "../github/pulls";
+import { fetchPrCommitters, fetchPrStats, fetchPrHeadSha } from "../github/pulls";
 import type { GithubApi } from "../github/api";
 import { makeListRecords } from "../store/github-store";
+import { appendRecord } from "../store/write";
+import { randomToken } from "../portal/github-oauth";
 import { checkRunBody, createCheckRun, commentBody, conclusionFor, upsertComment, retractCoverageComment, postClosingComment, closingComment, preRegisterCheck, CHECK_NAME } from "./checks";
 import { signAttributionToken, optionKey } from "../portal/attribution";
-import { signCompletionToken, isAgreeCommand } from "../portal/completion";
+import { signCompletionToken, parseAgreeCommand, type AgreeCommand } from "../portal/completion";
 
 /**
  * The pull_request orchestration (docs/design.md §5). Every store or
@@ -22,6 +24,10 @@ export type EnforcementDeps = {
   config: AppConfig;
   /** HMAC secret for attribution-link tokens (the identity secret). */
   attributionSecret?: string;
+  /** The join-request queue, injected by the app (it owns D1 + mail):
+   *  files a pending request for the org's PoC console. Unset: the
+   *  queue is unavailable and the command answers honestly. */
+  requestJoin?: (oclaId: string, login: string) => Promise<{ requested: boolean }>;
 };
 
 const CHECK_NAME_LOCAL = CHECK_NAME;
@@ -119,14 +125,20 @@ export async function closeMergedPullRequest(
   return { posted: true };
 }
 
-/** issue_comment.created — the `@ribose-cla agree` entry point (docs/design.md §3.12).
- *  Only PR authors/committers get a reply; everyone else is silently ignored. */
+/** issue_comment.created — the `@ribose-cla` command grammar
+ *  (docs/design.md §3.12 + issue #57). Only PR authors/committers get
+ *  a reply; everyone else is silently ignored. A comment never grants
+ *  coverage by self-declaration: `icla` elects only when the kernel's
+ *  live paths offer the ICLA, and `company` elects only against the
+ *  org's effective Schedule A — otherwise it files a join request. */
 export async function handleAgreeCommand(
   deps: EnforcementDeps,
-  args: { installationId: number; repoFullName: string; prNumber: number; commenter: string; prAuthor: string },
+  args: { installationId: number; repoFullName: string; prNumber: number; commenter: string; prAuthor: string; body: string },
 ): Promise<{ replied: boolean; reason?: string }> {
   const full = args.repoFullName;
   const commenter = args.commenter.toLowerCase();
+  const command = parseAgreeCommand(args.body);
+  if (!command) return { replied: false, reason: "not a command (ignored)" };
 
   const { committers } = await fetchPrCommitters(deps.api, args.installationId, full, args.prNumber);
   const logins = new Set<string>(committers.flatMap((c) => (c.login ? [c.login.toLowerCase()] : [])));
@@ -138,29 +150,105 @@ export async function handleAgreeCommand(
     { listRecords: makeListRecords(deps.api, deps.config.github.dataInstallationId, deps.config.github.dataRepo) },
     editions,
   );
-  const currentIcla = snapshot.iclas.find((r) => r.githubLogin.toLowerCase() === commenter && r.edition.textSha256 === editions.icla.textSha256);
-  if (currentIcla) {
-    await postBotReply(deps.api, args.installationId, full, args.prNumber, `@${commenter} you already signed the Individual CLA v${currentIcla.edition.version} — you're covered.`);
-    return { replied: true, reason: "already-signed" };
+
+  if (command.kind === "icla-completion") {
+    const currentIcla = snapshot.iclas.find((r) => r.githubLogin.toLowerCase() === commenter && r.edition.textSha256 === editions.icla.textSha256);
+    if (currentIcla) {
+      await postBotReply(deps.api, args.installationId, full, args.prNumber, `@${commenter} you already signed the Individual CLA v${currentIcla.edition.version} — you're covered.`);
+      return { replied: true, reason: "already-signed" };
+    }
+    if (!deps.attributionSecret) return { replied: false, reason: "portal unconfigured (fail-closed)" };
+    const token = await signCompletionToken(deps.attributionSecret, { repo: full, pr: args.prNumber, login: commenter }, Date.now());
+    const portalBase = `https://${deps.config.instance.portalHost}`;
+    await postBotReply(
+      deps.api,
+      args.installationId,
+      full,
+      args.prNumber,
+      [
+        `@${commenter} — almost done. Open this link to confirm your signature of the **Individual CLA v${deps.config.legal.current.icla}** (it states the full terms, and includes all your previous contributions unless you decline):`,
+        ``,
+        `${portalBase}/icla/complete?t=${token}`,
+        ``,
+        `_Your GitHub handle is already verified by this command; the link completes the signature record with your identity account._`,
+      ].join("\n"),
+    );
+    return { replied: true, reason: "completion-link sent" };
   }
 
-  if (!deps.attributionSecret) return { replied: false, reason: "portal unconfigured (fail-closed)" };
-  const token = await signCompletionToken(deps.attributionSecret, { repo: full, pr: args.prNumber, login: commenter }, Date.now());
-  const portalBase = `https://${deps.config.instance.portalHost}`;
-  await postBotReply(
-    deps.api,
-    args.installationId,
-    full,
-    args.prNumber,
-    [
-      `@${commenter} — almost done. Open this link to confirm your signature of the **Individual CLA v${deps.config.legal.current.icla}** (it states the full terms, and includes all your previous contributions unless you decline):`,
-      ``,
-      `${portalBase}/icla/complete?t=${token}`,
-      ``,
-      `_Your GitHub handle is already verified by this command; the link completes the signature record with your identity account._`,
-    ].join("\n"),
+  // `agree icla` / `agree company=...`: comment-driven attribution
+  // elections against the LIVE paths (the same safety as the signed
+  // /attribute link), then an immediate re-check.
+  const api = deps.api;
+  const { committers: evalCommitters, truncated } = await fetchPrCommitters(api, args.installationId, full, args.prNumber);
+  const diff = await fetchPrStats(api, args.installationId, full, args.prNumber);
+  const verdict = evaluate(
+    { context: { org: full.split("/")[0] ?? "", repo: full.split("/")[1] ?? "", pr: args.prNumber }, committers: evalCommitters, ...(diff ? { diff } : {}) },
+    snapshot,
+    deps.config,
+    editions,
   );
-  return { replied: true, reason: "completion-link sent" };
+  const mine = verdict.committers.find((c) => c.login?.toLowerCase() === commenter);
+
+  const elect = async (agreement: AgreementRef, label: string): Promise<{ replied: boolean; reason: string }> => {
+    await appendRecord(
+      { api, installationId: deps.config.github.dataInstallationId, dataRepo: deps.config.github.dataRepo, now: () => Date.now() },
+      "attribution",
+      { id: randomToken(), repo: full, pr: args.prNumber, login: commenter, agreement, recorded_at: new Date().toISOString() },
+    );
+    const sha = await fetchPrHeadSha(api, args.installationId, full, args.prNumber);
+    await evaluatePullRequest(deps, { installationId: args.installationId, repoFullName: full, prNumber: args.prNumber, headSha: sha });
+    await postBotReply(api, args.installationId, full, args.prNumber, `@${commenter} recorded — this pull request is contributed under **${label}**. The check re-ran and reflects it.`);
+    return { replied: true, reason: "election recorded" };
+  };
+
+  if (command.kind === "icla-elect") {
+    if (mine?.status === "covered") {
+      await postBotReply(api, args.installationId, full, args.prNumber, `@${commenter} you're already covered on this pull request (${mine.path}) — no election needed.`);
+      return { replied: true, reason: "already covered" };
+    }
+    const iclaOption = mine?.status === "must-specify" ? mine.options.find((o) => o.kind === "icla") : undefined;
+    if (!iclaOption) {
+      await postBotReply(api, args.installationId, full, args.prNumber, `@${commenter} the Individual CLA is not among your coverage options for this pull request${mine?.status === "missing" ? " — [sign the ICLA](https://" + deps.config.instance.portalHost + "/icla) first" : ""}.`);
+      return { replied: true, reason: "icla not among options" };
+    }
+    return elect(iclaOption, `the Individual CLA v${iclaOption.version}`);
+  }
+
+  // company election / join request
+  const orgSlug = command.company.toLowerCase();
+  const ocla = snapshot.oclas.find((o) => o.orgSlug.toLowerCase() === orgSlug);
+  if (!ocla) {
+    await postBotReply(api, args.installationId, full, args.prNumber, `@${commenter} no Organization CLA exists for "${command.company}". [See the organizations page](https://${deps.config.instance.portalHost}/organizations).`);
+    return { replied: true, reason: "no such organization" };
+  }
+  const onRoster = ocla.covered.some((r) => r.githubLogin.toLowerCase() === commenter);
+  if (!onRoster) {
+    if (!deps.requestJoin) {
+      await postBotReply(api, args.installationId, full, args.prNumber, `@${commenter} you are not on ${ocla.orgSlug}'s Schedule A. The join queue is temporarily unavailable — ask ${ocla.orgSlug}'s Point of Contact to add you.`);
+      return { replied: true, reason: "join queue unavailable" };
+    }
+    const r = await deps.requestJoin(ocla.id, commenter);
+    await postBotReply(
+      api,
+      args.installationId,
+      full,
+      args.prNumber,
+      `@${commenter} you are not on ${ocla.orgSlug}'s Schedule A${r.requested ? ` — a join request was sent to ${ocla.orgSlug}'s Point of Contact. Once they approve it, this check turns green on its own. A comment never grants coverage by itself: the Schedule A is the boundary.` : " — a join request is already pending with the Point of Contact."}`,
+    );
+    return { replied: true, reason: r.requested ? "join request sent" : "join request already pending" };
+  }
+  if (mine?.status === "covered") {
+    await postBotReply(api, args.installationId, full, args.prNumber, `@${commenter} you're already covered on this pull request (${mine.path}) — no election needed.`);
+    return { replied: true, reason: "already covered" };
+  }
+  const oclaOption = mine?.status === "must-specify" ? mine.options.find((o) => o.kind === "ocla" && o.orgSlug.toLowerCase() === orgSlug) : undefined;
+  if (!oclaOption) {
+    // on the roster but the live edition disagrees (stale OCLA) — honest answer
+    await postBotReply(api, args.installationId, full, args.prNumber, `@${commenter} ${ocla.orgSlug}'s OCLA does not currently offer live coverage on this pull request (its edition may be stale).`);
+    return { replied: true, reason: "ocla not among live options" };
+  }
+  return elect(oclaOption, `the ${ocla.orgSlug} OCLA v${oclaOption.version}`);
 }
 
 async function postBotReply(api: GithubApi, installationId: number, repoFullName: string, prNumber: number, body: string): Promise<void> {

@@ -55,4 +55,26 @@ export async function readCompletionToken(secret: string, token: string | undefi
 
 /** The exact command (case-insensitive, trimmed). */
 export const AGREE_COMMAND = "@ribose-cla agree";
-export const isAgreeCommand = (body: string): boolean => body.trim().toLowerCase() === AGREE_COMMAND;
+export const isAgreeCommand = (body: string): boolean => parseAgreeCommand(body) !== undefined;
+
+/** The command grammar (issue #57, Microsoft parity):
+ *  `@ribose-cla agree` - the ICLA completion link;
+ *  `@ribose-cla agree icla` - elect the ICLA on a must-specify PR;
+ *  `@ribose-cla agree company="slug"` (quotes optional) - elect the
+ *  org's OCLA when on the roster, else file a join request. */
+export type AgreeCommand =
+  | { kind: "icla-completion" }
+  | { kind: "icla-elect" }
+  | { kind: "company"; company: string };
+
+export function parseAgreeCommand(body: string): AgreeCommand | undefined {
+  const t = body.trim().toLowerCase();
+  if (t === AGREE_COMMAND) return { kind: "icla-completion" };
+  if (t === `${AGREE_COMMAND} icla`) return { kind: "icla-elect" };
+  const m = /^@ribose-cla agree company\s*=\s*(?:"([^"]+)"|(\S+))$/.exec(t);
+  if (m) {
+    const company = (m[1] ?? m[2] ?? "").trim();
+    if (company) return { kind: "company", company };
+  }
+  return undefined;
+}

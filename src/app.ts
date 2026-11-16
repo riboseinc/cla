@@ -11,7 +11,7 @@ import { discover, authorizationRequest, exchangeCode, verifyIdToken, resetOidcC
 import { githubAuthorizeUrl, exchangeGithubCode, fetchGithubUser, randomToken } from "./portal/github-oauth";
 import { SESSION_COOKIE, CSRF_COOKIE, makeSessionCookie, readSessionCookie, makeStateCookie, readStateCookie, newCsrfToken } from "./portal/session";
 import { readAttributionToken, optionKey } from "./portal/attribution";
-import { readCompletionToken, isAgreeCommand } from "./portal/completion";
+import { readCompletionToken, parseAgreeCommand } from "./portal/completion";
 import { signEnrollmentToken, readEnrollmentToken } from "./portal/enroll";
 import { loadSnapshot } from "./store/load";
 import { makeListRecords } from "./store/github-store";
@@ -90,7 +90,43 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         tokenCache: TOKEN_CACHE,
         etagCache: ETAG_CACHE,
       });
-      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, attributionSecret: env.OIDC_CLIENT_SECRET };
+      // The comment-command join boundary (issue #57): the handler
+      // stays D1/mail-free; the app owns the queue and the PoC notify.
+      const deps: EnforcementDeps = {
+        api,
+        config: GENERATED_CONFIG,
+        attributionSecret: env.OIDC_CLIENT_SECRET,
+        requestJoin: async (oclaId, login) => {
+          const db = d1(env);
+          if (!db) return { requested: false };
+          if (await hasPendingRequest(db, oclaId, login)) return { requested: false };
+          await requestJoin(db, {
+            id: randomToken(),
+            oclaId,
+            login,
+            riboseSub: "",
+            email: null,
+            requestedAt: new Date(now()).toISOString(),
+          });
+          const loaded = await loadSnapshot(
+            { listRecords: makeListRecords(api, GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+            kernelEditions(GENERATED_CONFIG),
+          );
+          const ocla = loaded.snapshot.oclas.find((o) => o.id === oclaId);
+          const pocEmail = ocla ? loaded.oclaPocs[ocla.id] : undefined;
+          const pending = db ? await pendingRequests(db, oclaId) : [];
+          const digest = pending.length >= GENERATED_CONFIG.coverage.notify.digestThreshold;
+          if (ocla && pocEmail) {
+            await sendMail(
+              mailDeps(env, GENERATED_CONFIG.coverage.notify.from, digest, fetcher),
+              pocEmail,
+              `CLA join request for ${ocla.orgSlug}`,
+              `@${login} requests Schedule-A coverage under your Organization CLA (via a pull-request comment). Approve or reject at ${portalBase}/admin-orgs/${ocla.orgSlug}.`,
+            );
+          }
+          return { requested: true };
+        },
+      };
 
       try {
         if (evt.event === "pull_request" && ["opened", "synchronize", "reopened"].includes(evt.action ?? "")) {
@@ -130,10 +166,10 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           if (!comment || !issue || !repo || !inst || typeof number !== "number" || !commenter || !prAuthor) {
             return c.json({ error: "payload missing expected fields" }, 400);
           }
-          if (!isPr || commenter.endsWith("[bot]") || !isAgreeCommand(bodyText)) {
+          if (!isPr || commenter.endsWith("[bot]") || !parseAgreeCommand(bodyText)) {
             return c.json({ ok: true, ignored: "not an agree command on a PR" });
           }
-          const r = await handleAgreeCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, prAuthor });
+          const r = await handleAgreeCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, prAuthor, body: bodyText });
           return c.json({ ok: true, replied: r.replied, reason: r.reason });
         }
         if (evt.event === "check_run" && evt.action === "rerequested") {
@@ -340,7 +376,43 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         { id: randomToken(), repo: tokenData.repo, pr: tokenData.pr, login: session.login, agreement: chosen, recorded_at: new Date(now()).toISOString() },
       );
       const sha = await fetchPrHeadSha(api, tokenData.installationId, tokenData.repo, tokenData.pr);
-      const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, attributionSecret: env.OIDC_CLIENT_SECRET };
+      // The comment-command join boundary (issue #57): the handler
+      // stays D1/mail-free; the app owns the queue and the PoC notify.
+      const deps: EnforcementDeps = {
+        api,
+        config: GENERATED_CONFIG,
+        attributionSecret: env.OIDC_CLIENT_SECRET,
+        requestJoin: async (oclaId, login) => {
+          const db = d1(env);
+          if (!db) return { requested: false };
+          if (await hasPendingRequest(db, oclaId, login)) return { requested: false };
+          await requestJoin(db, {
+            id: randomToken(),
+            oclaId,
+            login,
+            riboseSub: "",
+            email: null,
+            requestedAt: new Date(now()).toISOString(),
+          });
+          const loaded = await loadSnapshot(
+            { listRecords: makeListRecords(api, GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+            kernelEditions(GENERATED_CONFIG),
+          );
+          const ocla = loaded.snapshot.oclas.find((o) => o.id === oclaId);
+          const pocEmail = ocla ? loaded.oclaPocs[ocla.id] : undefined;
+          const pending = db ? await pendingRequests(db, oclaId) : [];
+          const digest = pending.length >= GENERATED_CONFIG.coverage.notify.digestThreshold;
+          if (ocla && pocEmail) {
+            await sendMail(
+              mailDeps(env, GENERATED_CONFIG.coverage.notify.from, digest, fetcher),
+              pocEmail,
+              `CLA join request for ${ocla.orgSlug}`,
+              `@${login} requests Schedule-A coverage under your Organization CLA (via a pull-request comment). Approve or reject at ${portalBase}/admin-orgs/${ocla.orgSlug}.`,
+            );
+          }
+          return { requested: true };
+        },
+      };
       await evaluatePullRequest(deps, { installationId: tokenData.installationId, repoFullName: tokenData.repo, prNumber: tokenData.pr, headSha: sha });
       return c.json({ recorded: true, agreement: chosen });
     });
