@@ -85,7 +85,15 @@ export async function evaluatePullRequest(
     // a comment left over from an earlier missing-state is retracted.
     await retractCoverageComment(deps.api, args.installationId, full, args.prNumber);
   } else {
-    await upsertComment(deps.api, args.installationId, full, args.prNumber, commentBody(verdict, portalBase, { attributionLinks, signingDocsUrl }));
+    // The stale-edition hint (issue #60): a committer whose signature
+    // exists but predates the current edition reads WHY they are asked
+    // again, not just that they are.
+    const staleEditions: Record<string, { signed: string; current: string }> = {};
+    for (const login of verdict.missing) {
+      const stale = loaded.snapshot.iclas.find((r) => r.githubLogin.toLowerCase() === login.toLowerCase() && r.edition.textSha256 !== editions.icla.textSha256);
+      if (stale) staleEditions[login] = { signed: stale.edition.version, current: editions.icla.version };
+    }
+    await upsertComment(deps.api, args.installationId, full, args.prNumber, commentBody(verdict, portalBase, { attributionLinks, signingDocsUrl, staleEditions }));
   }
   return { handled: true, outcome: `verdict=${verdict.verdict} missing=${verdict.missing.length} specify=${Object.keys(verdict.mustSpecify).length}` };
 }

@@ -68,30 +68,49 @@ export async function createCheckRun(
 export function commentBody(
   verdict: PrVerdict,
   portalBase: string,
-  opts: { notices?: string[]; attributionLinks?: Record<string, Array<{ label: string; url: string }>>; signingDocsUrl?: string } = {},
+  opts: {
+    notices?: string[];
+    attributionLinks?: Record<string, Array<{ label: string; url: string }>>;
+    signingDocsUrl?: string;
+    /** login -> the editions at play when the signer holds a stale signature */
+    staleEditions?: Record<string, { signed: string; current: string }>;
+  } = {},
 ): string {
   const rows: string[] = [];
   for (const c of verdict.committers) {
     if (c.status === "covered") {
+      // Allowlist rows stay in the check summary; the conversation
+      // comment omits them — they are noise for humans.
+      if (c.path === "allowlist") continue;
       rows.push(`| @${c.login ?? "(unlinked)"} | covered (${c.path}${c.agreement && "orgSlug" in c.agreement ? ` — ${c.agreement.orgSlug}` : ""}) |`);
     } else if (c.status === "must-specify") {
-      const links = (opts.attributionLinks?.[c.login ?? ""] ?? c.options.map((o) => ({ label: o.kind === "icla" ? "Individual CLA" : `${o.orgSlug} OCLA`, url: `${portalBase}/agreements` })))
+      const links = (opts.attributionLinks?.[c.login ?? ""] ?? c.options.map((o) => ({ label: o.kind === "icla" ? `Individual CLA v${o.version}` : `${o.orgSlug} OCLA v${o.version}`, url: `${portalBase}/agreements` })))
         .map((l) => `[${l.label}](${l.url})`)
         .join(" · ");
-      rows.push(`| @${c.login ?? "(unlinked)"} | **specify under which agreement this PR is contributed**: ${links} |`);
+      rows.push(`| @${c.login ?? "(unlinked)"} | This pull request is covered by more than one agreement. Choose the one that applies: ${links}. |`);
     } else {
-      rows.push(`| @${c.login ?? "(unlinked)"} | **missing** — [sign the ICLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""} or [find your organization](${portalBase}/organizations) |`);
+      const stale = c.login ? opts.staleEditions?.[c.login] : undefined;
+      const what = stale
+        ? `You signed the Individual CLA v${stale.signed}, and the current edition is v${stale.current}; the text changed, so a re-sign is needed`
+        : "Ribose requires a signed agreement for every contribution";
+      rows.push(`| @${c.login ?? "(unlinked)"} | ${what}. [Sign the Individual CLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""} or [find your organization](${portalBase}/organizations). |`);
     }
   }
+  const headline =
+    verdict.verdict === "fail"
+      ? "merge blocked: the pull request includes a contribution from a committer without a signed agreement"
+      : Object.keys(verdict.mustSpecify).length > 0
+        ? "action needed: the coverage of this pull request is ambiguous, and the contributor chooses the agreement that applies"
+        : "all committers covered";
   return [
     COMMENT_MARKER,
-    `**${CHECK_NAME}** — ${verdict.verdict === "fail" ? "merge blocked: a committer is not covered" : Object.keys(verdict.mustSpecify).length > 0 ? "action needed: specify under which agreement" : "all committers covered"}`,
+    `**${CHECK_NAME}** — ${headline}.`,
     "",
     "| Committer | Status |",
     "|---|---|",
     ...rows,
     ...(opts.notices?.length ? ["", ...opts.notices] : []),
-    ...(opts.signingDocsUrl ? ["", `New to this check? [How to sign the Ribose CLA](${opts.signingDocsUrl}) — one signature covers every Ribose organization.`] : []),
+    ...(opts.signingDocsUrl ? ["", `New to this check? [How to sign the Ribose CLA](${opts.signingDocsUrl}) explains both flows; one signature covers every Ribose organization. Once the signature is recorded, this check turns green on its own, and no re-push is needed.`] : []),
   ].join("\n");
 }
 

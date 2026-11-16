@@ -35,6 +35,7 @@ coverage:
     global:
       - "dependabot[bot]"
       - "github-actions[bot]"
+      - "estate-release-manager"  # a non-bot allowlist entry for spec coverage"
     per_org:
       example-org:
         - example-ci

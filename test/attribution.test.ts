@@ -62,7 +62,7 @@ describe("must-specify links + election + closing statement", () => {
     const text = (comment!.body as Record<string, unknown>)["body"] as string;
     expect(text).toContain(COMMENT_MARKER);
     expect(text).toContain("/attribute?t=");
-    expect(text).toContain("specify under which agreement");
+    expect(text).toContain("Choose the one that applies");
     expect((await readAttributionToken("op-secret", text.match(/t=([A-Za-z0-9_.-]+)&pick=icla/)![1], Date.now()))!.login).toBe("tj-91");
   });
 

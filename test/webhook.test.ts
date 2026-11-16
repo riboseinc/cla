@@ -350,3 +350,63 @@ describe("minimal change: honest disclosure (issue #58)", () => {
     expect((closing!.body as Record<string, unknown>)["body"]).toContain("under the minimal-change threshold");
   });
 });
+
+describe("bot message UX (issue #60)", () => {
+  it("a stale signature reads WHY: the edition changed and a re-sign is needed", async () => {
+    const pem = await makeKeyPem();
+    const fx: Fixture = makeFixture();
+    // The fixture data gains a STALE ICLA for stranger (an old edition).
+    fx.routes.set("/repos/example-org/cla-data/git/trees/HEAD", () =>
+      new Response(JSON.stringify({
+        tree: [
+          { path: "ocla/2026/03/mtg.json", type: "blob" },
+          { path: "icla/2026/11/tj.json", type: "blob" },
+          { path: "icla/2026/09/stranger-old.json", type: "blob" },
+          { path: "role/2026/11/poc.json", type: "blob" },
+        ],
+      }), { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    fx.routes.set("/repos/example-org/cla-data/contents/icla/2026/09/stranger-old.json", () =>
+      Response.json({
+        content: Buffer.from(JSON.stringify({
+          id: "icla-stranger-old",
+          githubLogin: "stranger",
+          email: "s@x.example",
+          claEdition: { kind: "icla", version: "0.9", textSha256: "oldsha" },
+          pastContributionsIncluded: true,
+          source: "portal",
+        })).toString("base64"),
+        encoding: "base64",
+      }, { status: 200 }),
+    );
+    const app = createApp({ WEBHOOK_SECRET, GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem }, { fetcher: fx.fetcher });
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, pullRequestPayload());
+    await app.request("/api/github/webhook", { method: "POST", body, headers });
+
+    const comment = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments"));
+    const text = (comment!.body as Record<string, unknown>)["body"] as string;
+    expect(text).toContain("You signed the Individual CLA v0.9, and the current edition is v");
+    expect(text).toContain("a re-sign is needed");
+  });
+
+  it("allowlist rows stay in the check summary but not in the conversation comment", async () => {
+    const pem = await makeKeyPem();
+    const fx: Fixture = makeFixture();
+    // stranger is allowlisted via the example config's per-org list
+    const app = createApp({ WEBHOOK_SECRET, GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem }, { fetcher: fx.fetcher });
+    // tj-91 must-specifies; add an allowlisted committer to the PR
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1/commits", () =>
+      Response.json([
+        { author: { login: "tj-91", type: "User" }, commit: { author: { email: "johannes@mtg.example" } } },
+        { author: { login: "estate-release-manager", type: "User" }, commit: { author: { email: "rm@x.example" } } },
+      ], { status: 200 }),
+    );
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, pullRequestPayload());
+    await app.request("/api/github/webhook", { method: "POST", body, headers });
+
+    const comment = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments"));
+    const text = (comment!.body as Record<string, unknown>)["body"] as string;
+    expect(text).toContain("@tj-91");
+    expect(text).not.toContain("@estate-release-manager");
+  });
+});
