@@ -89,7 +89,7 @@ export type AgreementRef =
 export type CommitterVerdict =
   | { login: string | null; status: "covered"; path: "allowlist" | "icla" | "ocla" | "separate-agreement"; agreement?: AgreementRef; matchedBy: "login" | "email"; underSeparateAgreement?: boolean }
   | { login: string | null; status: "must-specify"; options: AgreementRef[]; matchedBy: "login" | "email" }
-  | { login: string | null; status: "missing" };
+  | { login: string | null; status: "missing"; email?: string | null };
 
 export type PrVerdict = {
   /** "pass": every committer covered or must-specify; "fail": at least one missing. */
