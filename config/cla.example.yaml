@@ -23,6 +23,12 @@ instance:
     contractors:
       - example-contractor
       - falko-strenzke
+    # Known commit emails: UNLINKED commits (the git author email does
+    # not resolve to a GitHub account) carry no login, so the registry
+    # matches the email the commit actually carries.
+    emails:
+      example-contractor:
+        - contractor@example.com
   # The internal roster census: static as well; the view adds live state.
   roster:
     members:

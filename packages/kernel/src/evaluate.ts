@@ -73,6 +73,11 @@ export type StoreSnapshot = {
    *  classification stays there and is never rendered publicly). The
    *  click still gates; the ATTRIBUTION differs. */
   msaLogins?: string[];
+  /** Known commit emails of registry logins: UNLINKED commits (GitHub
+   *  cannot resolve the git author email to an account) carry no login,
+   *  so the registry must also match on the email the contributor
+   *  actually commits with. */
+  msaEmails?: string[];
 };
 
 // ---- outputs ----
@@ -166,7 +171,11 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
     // The registry IS the coverage: a login bound to a separate written
     // agreement with Ribose is covered outright — no ICLA click, and
     // the attribution never claims the ICLA (issue #85, owner model).
-    if (c.login && (snap.msaLogins ?? []).map(normalize).includes(normalize(c.login))) {
+    // UNLINKED commits (author_login NULL) match by the git author
+    // email — the identity the commit actually carries.
+    const registryByLogin = c.login !== null && (snap.msaLogins ?? []).map(normalize).includes(normalize(c.login));
+    const registryByEmail = c.email !== null && c.email !== undefined && (snap.msaEmails ?? []).map(normalize).includes(normalize(c.email));
+    if (registryByLogin || registryByEmail) {
       committers.push({ login: c.login, status: "covered", path: "separate-agreement", matchedBy: "login", underSeparateAgreement: true });
       continue;
     }

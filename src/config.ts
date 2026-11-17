@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 export type EditionFile = { version: string; file: string; text: string; sha256: string };
 
 export type AppConfig = {
-  instance: { name: string; portalHost: string; signingDocsUrl?: string; rosterManagers?: string[]; separateAgreement?: { logins: string[] } };
+  instance: { name: string; portalHost: string; signingDocsUrl?: string; rosterManagers?: string[]; separateAgreement?: { logins: string[]; emails: string[] } };
   roster?: { members: Array<{ login: string; role: string; name: string }> };
   identity: { issuer: string; clientId: string };
   legal: {
@@ -118,7 +118,17 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
     .map((x) => str(x))
     .filter((x): x is string => Boolean(x))
     .map((x) => x.toLowerCase());
-  const separateAgreement = sepLogins.length > 0 ? { logins: [...new Set(sepLogins)] } : undefined;
+  // Known commit emails of registry logins: UNLINKED commits (the git
+  // author email does not resolve to a GitHub account) carry no login,
+  // so the registry matches the email the commit actually carries.
+  const sepEmails: string[] = [];
+  for (const emails of Object.values(obj(sepRaw["emails"]))) {
+    for (const e of arr(emails)) {
+      const v = str(e);
+      if (v) sepEmails.push(v.toLowerCase());
+    }
+  }
+  const separateAgreement = sepLogins.length > 0 ? { logins: [...new Set(sepLogins)], emails: [...new Set(sepEmails)] } : undefined;
   // The internal roster census: static as well; the view adds the live state.
   const rosterRaw = obj(instance["roster"]);
   const rosterMembers = arr(rosterRaw["members"])

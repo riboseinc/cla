@@ -66,6 +66,7 @@ export async function evaluatePullRequest(
     editions,
   );
   loaded.snapshot.msaLogins = deps.config.instance.separateAgreement?.logins ?? [];
+  loaded.snapshot.msaEmails = deps.config.instance.separateAgreement?.emails ?? [];
   const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers, diff }, loaded.snapshot, deps.config, editions);
 
   const portalBase = `https://${deps.config.instance.portalHost}`;
@@ -117,6 +118,7 @@ export async function closeMergedPullRequest(
   const { committers } = await fetchPrCommitters(deps.api, args.installationId, full, args.prNumber);
   const diff = await fetchPrStats(deps.api, args.installationId, full, args.prNumber);
   loaded.snapshot.msaLogins = deps.config.instance.separateAgreement?.logins ?? [];
+  loaded.snapshot.msaEmails = deps.config.instance.separateAgreement?.emails ?? [];
   const verdict = evaluate({ context: { org, repo, pr: args.prNumber }, committers, diff }, loaded.snapshot, deps.config, editions);
 
   const elected: Record<string, AgreementRef> = {};
@@ -250,6 +252,7 @@ export async function handleAgreeCommand(
   const { committers: evalCommitters, truncated } = await fetchPrCommitters(api, args.installationId, full, args.prNumber);
   const diff = await fetchPrStats(api, args.installationId, full, args.prNumber);
   snapshot.msaLogins = deps.config.instance.separateAgreement?.logins ?? [];
+  snapshot.msaEmails = deps.config.instance.separateAgreement?.emails ?? [];
   const verdict = evaluate(
     { context: { org: full.split("/")[0] ?? "", repo: full.split("/")[1] ?? "", pr: args.prNumber }, committers: evalCommitters, ...(diff ? { diff } : {}) },
     snapshot,

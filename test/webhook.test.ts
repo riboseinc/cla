@@ -519,3 +519,39 @@ describe("the separate-agreement registry (MSA)", () => {
     expect(text).not.toContain("contractor");
   });
 });
+
+describe("registry email fallback (unlinked commits)", () => {
+  it("an UNLINKED commit whose git author email is a registry email is covered — neutrally, unlinked stays rendered", async () => {
+    const pem = await makeKeyPem();
+    const fx: Fixture = makeFixture();
+    const app = createApp({ WEBHOOK_SECRET, GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem }, { fetcher: fx.fetcher });
+    // the example registry compiles contractor@example.com; an unlinked
+    // commit carrying it is covered without any account link.
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1/commits", () =>
+      Response.json([{ author: null, commit: { author: { email: "contractor@example.com" } } }], { status: 200 }),
+    );
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, pullRequestPayload());
+    const res = await app.request("/api/github/webhook", { method: "POST", body, headers });
+    expect(res.status).toBe(200);
+
+    const check = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/repos/rnpgp/rnp/check-runs"));
+    expect((check!.body as Record<string, unknown>)["output"]).toMatchObject({
+      summary: expect.stringContaining("an existing Ribose agreement"),
+    });
+  });
+
+  it("an unlinked commit with an unknown email stays missing", async () => {
+    const pem = await makeKeyPem();
+    const fx: Fixture = makeFixture();
+    const app = createApp({ WEBHOOK_SECRET, GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem }, { fetcher: fx.fetcher });
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1/commits", () =>
+      Response.json([{ author: null, commit: { author: { email: "unknown@nowhere.example" } } }], { status: 200 }),
+    );
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, pullRequestPayload());
+    await app.request("/api/github/webhook", { method: "POST", body, headers });
+    const check = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/repos/rnpgp/rnp/check-runs"));
+    expect((check!.body as Record<string, unknown>)["output"]).toMatchObject({
+      summary: expect.stringContaining("not covered"),
+    });
+  });
+});
