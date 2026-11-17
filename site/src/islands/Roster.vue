@@ -73,11 +73,11 @@ onMounted(load);
               <span v-else class="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">outstanding</span>
             </td>
             <td class="px-4 py-3 text-right text-xs text-slate-400">
-              </button>
+              policy
             </td>
           </tr>
           <tr v-if="members.length === 0">
-            <td colspan="5" class="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400">The roster carries no members yet. The first addition lands below.</td>
+            <td colspan="4" class="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400">The roster carries no members yet; its membership lives in the instance config.</td>
           </tr>
         </tbody>
       </table>
