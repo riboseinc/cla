@@ -82,7 +82,7 @@ export type AgreementRef =
   | { kind: "ocla"; version: string; oclaId: string; orgSlug: string };
 
 export type CommitterVerdict =
-  | { login: string | null; status: "covered"; path: "allowlist" | "icla" | "ocla"; agreement?: AgreementRef; matchedBy: "login" | "email"; underSeparateAgreement?: boolean }
+  | { login: string | null; status: "covered"; path: "allowlist" | "icla" | "ocla" | "separate-agreement"; agreement?: AgreementRef; matchedBy: "login" | "email"; underSeparateAgreement?: boolean }
   | { login: string | null; status: "must-specify"; options: AgreementRef[]; matchedBy: "login" | "email" }
   | { login: string | null; status: "missing" };
 
@@ -162,6 +162,14 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
 
   for (const c of pr.committers) {
     if (c.isBot) continue;
+
+    // The registry IS the coverage: a login bound to a separate written
+    // agreement with Ribose is covered outright — no ICLA click, and
+    // the attribution never claims the ICLA (issue #85, owner model).
+    if (c.login && (snap.msaLogins ?? []).map(normalize).includes(normalize(c.login))) {
+      committers.push({ login: c.login, status: "covered", path: "separate-agreement", matchedBy: "login", underSeparateAgreement: true });
+      continue;
+    }
 
     const allowlisted =
       (c.login && (cfg.coverage.allowlist.global.map(normalize).includes(normalize(c.login)) ||

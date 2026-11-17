@@ -412,16 +412,14 @@ describe("bot message UX (issue #60)", () => {
 });
 
 describe("the separate-agreement registry (MSA)", () => {
-  it("a covered committer on the registry reads neutrally: no ICLA claim, no classification", async () => {
+  it("a registry login is covered outright — no ICLA click, neutral wording, no classification", async () => {
     const pem = await makeKeyPem();
     const fx: Fixture = makeFixture();
-    // tj-91 is on the registry: their ICLA still covers, but the
-    // attribution names the separate agreement and nothing else.
+    // registry logins need NO records at all: the registry IS the
+    // coverage, and the attribution names the agreement and nothing else.
     fx.routes.set("/repos/example-org/cla-data/git/trees/HEAD", () =>
       new Response(JSON.stringify({
         tree: [
-          { path: "ocla/2026/03/mtg.json", type: "blob" },
-          { path: "icla/2026/11/tj.json", type: "blob" },
           { path: "role/2026/11/poc.json", type: "blob" },
         ],
       }), { status: 200, headers: { "content-type": "application/json" } }),
