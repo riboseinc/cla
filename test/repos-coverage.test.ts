@@ -76,6 +76,31 @@ describe("repos-coverage: the person table", () => {
     expect(row.contributors.find((c) => c.login === "stranger")).toMatchObject({ state: "outstanding" });
   });
 
+  it("an OCLA row names which organization covers the person; an ICLA row names none", () => {
+    const both = snap({
+      iclas: [icla()],
+      oclas: [
+        ocla({ id: "ocla-mtg", orgSlug: "mtg-ag", covered: [{ githubLogin: "falko-strenzke", email: "falko@mtg.example" }] }),
+        ocla({ id: "ocla-acme", orgSlug: "acme", covered: [{ githubLogin: "acme-dev", email: "dev@acme.example" }] }),
+      ],
+    });
+    const row = repoRow(
+      "org/repo",
+      true,
+      [commit("tj-91", "johannes@mtg.example"), commit("falko-strenzke", "falko@mtg.example"), commit("acme-dev", "dev@acme.example")],
+      both,
+      cfg(),
+      EDITIONS,
+      25,
+    );
+    const by = (l: string) => row.contributors.find((c) => c.login === l);
+    // "covered by an OCLA" is not enough for the operator: WHICH OCLA.
+    expect(by("falko-strenzke")).toMatchObject({ state: "signed", path: "ocla", org_slug: "mtg-ag" });
+    expect(by("acme-dev")).toMatchObject({ state: "signed", path: "ocla", org_slug: "acme" });
+    expect(by("tj-91")).toMatchObject({ state: "signed", path: "icla" });
+    expect(by("tj-91")?.org_slug).toBeUndefined();
+  });
+
   it("two applicable agreements read must-specify with their options", () => {
     const both = snap({ iclas: [icla()], oclas: [ocla({ covered: [{ githubLogin: "tj-91", email: "johannes@mtg.example" }] })] });
     const row = repoRow("org/repo", true, [commit("tj-91", "johannes@mtg.example")], both, cfg(), EDITIONS, 25);

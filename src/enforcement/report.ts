@@ -32,6 +32,9 @@ export type ContributorRow = {
   email: string | null;
   state: PersonState;
   path?: "icla" | "ocla" | "separate-agreement";
+  /** Which OCLA covers the person (the org slug) — set only on an
+   *  `ocla` path; an ICLA row names no organization. */
+  org_slug?: string;
   edition?: string;
   matched_by?: "login" | "email";
   /** The login is covered under a separate written agreement: the click
@@ -144,6 +147,7 @@ export function repoRow(
           ...base,
           state: "signed",
           path: v.path,
+          ...(v.agreement && "orgSlug" in v.agreement ? { org_slug: v.agreement.orgSlug } : {}),
           edition: v.agreement?.version,
           matched_by: v.matchedBy,
           ...(v.underSeparateAgreement ? { under_separate_agreement: true } : {}),
