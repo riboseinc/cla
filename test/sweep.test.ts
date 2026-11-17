@@ -72,31 +72,24 @@ describe("the sweep queue (issue #59)", () => {
     fx.routes.set("/app/installations", () => Response.json({ installations: [{ id: 42, account: { login: "rnpgp" } }, { id: 7, account: { login: "metanorma" } }] }, { status: 200 }));
     fx.routes.set("/app/installations/42/access_tokens", () => Response.json({ token: "ghs_42" }, { status: 201 }));
     fx.routes.set("/app/installations/7/access_tokens", () => Response.json({ token: "ghs_7" }, { status: 201 }));
-    fx.routes.set("/search/issues", () => Response.json({ items: [] }, { status: 200 }));
-    fx.routes.set("/search/issues?per_page=50", () => Response.json({ items: [] }, { status: 200 }));
-    const searchRoute = (q: string, items: Array<{ number: number; repository_url: string }>) =>
-      fx.routes.set(`/search/issues`, (_url) => {
-        // the fixture fetcher keys routes by pathname only; dispatch on the
-        // captured init? we encode the org in the path — use two path forms:
-        return Response.json({ items }, { status: 200 });
-      });
-    // rnpgp's search: the fixture's route map is pathname-keyed, so the
-    // two orgs need distinguishable paths — encode via the q param by
-    // using per-installation route overrides is impossible; instead both
-    // searches return their own PR via a closure that counts calls.
-    let call = 0;
-    fx.routes.set("/search/issues", () => {
-      call++;
-      return Response.json(
-        {
-          items:
-            call === 1
-              ? [{ number: 1, repository_url: "https://api.github.com/repos/rnpgp/rnp" }]
-              : [{ number: 9, repository_url: "https://api.github.com/repos/metanorma/isodoc" }],
-        },
-        { status: 200 },
-      );
-    });
+    // the Search API returns nothing on installation tokens: the walk is
+    // per repository instead.
+    fx.routes.set("/installation/repositories", (() => {
+      let call = 0;
+      return () => {
+        call++;
+        return Response.json(
+          { repositories: call === 1 ? [{ full_name: "rnpgp/rnp" }] : [{ full_name: "metanorma/isodoc" }] },
+          { status: 200 },
+        );
+      };
+    })());
+    fx.routes.set("/repos/rnpgp/rnp/pulls", () =>
+      Response.json([{ number: 1, user: { login: "stranger" } }], { status: 200 }),
+    );
+    fx.routes.set("/repos/metanorma/isodoc/pulls", () =>
+      Response.json([{ number: 9, user: { login: "stranger" } }], { status: 200 }),
+    );
     fx.routes.set("/repos/metanorma/isodoc/pulls/9", () => Response.json({ head: { sha: "sha-9" }, changed_files: 5, additions: 40, deletions: 10 }, { status: 200 }));
     fx.routes.set("/repos/metanorma/isodoc/pulls/9/commits", () =>
       Response.json([{ author: { login: "stranger", type: "User" }, commit: { author: { email: "s@x.example" } } }], { status: 200 }),

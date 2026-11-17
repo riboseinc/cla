@@ -27,7 +27,15 @@ export async function enqueueSweepFor(env: Env, logins: string[]): Promise<void>
   }
 }
 
-export async function sweepLogin(deps: EnforcementDeps, login: string, cursor: { instIndex: number } | undefined): Promise<{ cursor: { instIndex: number } | null; evaluated: string[]; failed: string[] }> {
+export type SweepCursor = { instIndex: number; repoIndex: number; repos: string[] };
+
+/** The installation's open-pull-request enumeration for one login: the
+ *  GitHub Search API returns nothing on installation tokens, so the
+ *  walk is per repository — list the installation's repositories, then
+ *  each repository's open pulls, filtering by author. Bounded by the
+ *  shared call budget; the cursor resumes exactly where the walk
+ *  stopped. */
+export async function sweepLogin(deps: EnforcementDeps, login: string, cursor: { instIndex: number; repoIndex: number; repos: string[] } | undefined): Promise<{ cursor: SweepCursor | null; evaluated: string[]; failed: string[] }> {
   const evaluated: string[] = [];
   const failed: string[] = [];
   let calls = 0;
@@ -37,29 +45,40 @@ export async function sweepLogin(deps: EnforcementDeps, login: string, cursor: {
   const start = cursor?.instIndex ?? 0;
   for (let i = start; i < installations.length; i++) {
     const inst = installations[i]!;
-    const org = inst.account?.login;
-    if (!org) continue;
-    if (calls >= CALL_BUDGET) return { cursor: { instIndex: i }, evaluated, failed };
-    calls++;
-    const search = await deps.api.request(inst.id, "GET", `/search/issues?q=${encodeURIComponent(`is:pr is:open author:${login} org:${org}`)}&per_page=50`);
-    if (search.status !== 200) {
-      failed.push(`${org}: search ${search.status}`);
-      continue;
-    }
-    const items = (JSON.parse(search.body) as { items?: Array<{ number?: number; repository_url?: string }> }).items ?? [];
-    for (const item of items) {
-      const number = item.number;
-      const repoFull = item.repository_url?.split("/repos/")[1];
-      if (typeof number !== "number" || !repoFull) continue;
-      try {
-        const sha = await fetchPrHeadSha(deps.api, inst.id, repoFull, number);
-        calls++;
-        const r = await evaluatePullRequest(deps, { installationId: inst.id, repoFullName: repoFull, prNumber: number, headSha: sha });
-        evaluated.push(`${repoFull}#${number} (${r.outcome})`);
-      } catch (e) {
-        failed.push(`${repoFull}#${number}: ${(e as Error).message}`);
+    if (calls >= CALL_BUDGET) return { cursor: { instIndex: i, repoIndex: 0, repos: [] }, evaluated, failed };
+    // the installation's repositories: cached in the cursor when resuming
+    let repos = cursor && cursor.instIndex === i && cursor.repos.length > 0 ? cursor.repos : undefined;
+    if (!repos) {
+      calls++;
+      const list = await deps.api.request(inst.id, "GET", "/installation/repositories?per_page=100");
+      if (list.status !== 200) {
+        failed.push(`${inst.account?.login ?? inst.id}: repositories ${list.status}`);
+        continue;
       }
-      if (calls >= CALL_BUDGET) return { cursor: { instIndex: i }, evaluated, failed };
+      repos = (JSON.parse(list.body) as { repositories?: Array<{ full_name?: string }> }).repositories?.map((r) => r.full_name ?? "").filter(Boolean) ?? [];
+    }
+    const repoStart = cursor && cursor.instIndex === i ? (cursor.repoIndex ?? 0) : 0;
+    for (let j = repoStart; j < repos.length; j++) {
+      const repoFull = repos[j]!;
+      if (calls >= CALL_BUDGET) return { cursor: { instIndex: i, repoIndex: j, repos }, evaluated, failed };
+      calls++;
+      const pulls = await deps.api.request(inst.id, "GET", `/repos/${repoFull}/pulls?state=open&per_page=50`);
+      if (pulls.status !== 200) {
+        failed.push(`${repoFull}: pulls ${pulls.status}`);
+        continue;
+      }
+      const opens = (JSON.parse(pulls.body) as Array<{ number?: number; user?: { login?: string } }>).filter((p) => p.user?.login?.toLowerCase() === login.toLowerCase() && typeof p.number === "number");
+      for (const p of opens) {
+        try {
+          const sha = await fetchPrHeadSha(deps.api, inst.id, repoFull, p.number!);
+          calls++;
+          const r = await evaluatePullRequest(deps, { installationId: inst.id, repoFullName: repoFull, prNumber: p.number!, headSha: sha });
+          evaluated.push(`${repoFull}#${p.number} (${r.outcome})`);
+        } catch (e) {
+          failed.push(`${repoFull}#${p.number}: ${(e as Error).message}`);
+        }
+        if (calls >= CALL_BUDGET) return { cursor: { instIndex: i, repoIndex: j, repos }, evaluated, failed };
+      }
     }
   }
   return { cursor: null, evaluated, failed };
@@ -75,10 +94,10 @@ export async function drainSweepStep(env: Env, fetcher: FetchLike = (url, init) 
   if (!claim) return { done: true };
   const api = portalApi(env, fetcher, () => Date.now());
   const deps: EnforcementDeps = { api, config: GENERATED_CONFIG, attributionSecret: env.OIDC_CLIENT_SECRET };
-  let cursor: { instIndex: number } | undefined;
+  let cursor: { instIndex: number; repoIndex: number; repos: string[] } | undefined;
   if (typeof claim.cursor === "string" && claim.cursor) {
     try {
-      cursor = JSON.parse(claim.cursor) as { instIndex: number };
+      cursor = JSON.parse(claim.cursor) as { instIndex: number; repoIndex: number; repos: string[] };
     } catch {
       cursor = undefined;
     }
