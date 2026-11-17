@@ -52,6 +52,12 @@ github:
   data_installation_id: 1
 
 coverage:
+  # Preapproved logins: covered outright, never asked to sign — the check
+  # discloses `covered via allowlist` and the bot stays silent. An org's
+  # CI machine account is the canonical case. Only list a `{org}-ci`
+  # handle the organization has registered on GitHub: an unregistered
+  # name is claimable by anyone, and listing it would preapprove whoever
+  # claims it.
   allowlist:
     global:
       - "dependabot[bot]"

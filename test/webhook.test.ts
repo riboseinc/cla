@@ -411,6 +411,70 @@ describe("bot message UX (issue #60)", () => {
   });
 });
 
+describe("CI accounts are preapproved (issue #83)", () => {
+  // The estate's org-operated `{org}-ci` machine accounts are covered by
+  // CONFIGURATION, never code: the allowlist is the whole mechanism. A
+  // covered PR shows the path in the check summary, stays silent in the
+  // conversation, and never waits on a signature.
+
+  const ciPayload = (repo: string) => pullRequestPayload({ repository: { full_name: repo } });
+  const commits = (login: string) => () =>
+    Response.json([{ author: { login, type: "User" }, commit: { author: { email: `${login}@example.org` } } }], { status: 200 });
+  const stats = () =>
+    Response.json({ changed_files: 5, additions: 20, deletions: 5, head: { sha: "abc123" } }, { status: 200 });
+
+  it("passes with `covered via allowlist` in the check summary, and the comment stays silent", async () => {
+    const pem = await makeKeyPem();
+    const fx: Fixture = makeFixture();
+    // the example config allowlists `example-ci` for `example-org`
+    fx.routes.set("/repos/example-org/widget/pulls/1/commits", commits("example-ci"));
+    fx.routes.set("/repos/example-org/widget/pulls/1", stats);
+    const app = createApp({ WEBHOOK_SECRET, GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem }, { fetcher: fx.fetcher });
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, ciPayload("example-org/widget"));
+    const res = await app.request("/api/github/webhook", { method: "POST", body, headers });
+
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { outcome: string }).outcome).toContain("missing=0");
+    const check = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/repos/example-org/widget/check-runs"));
+    expect(check!.body).toMatchObject({ conclusion: "success" });
+    expect((check!.body as Record<string, unknown>)["output"]).toMatchObject({
+      summary: expect.stringContaining("- @example-ci — covered via **allowlist**"),
+    });
+    // the same silence as any covered pull request
+    expect(fx.calls.some((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments"))).toBe(false);
+  });
+
+  it("is org-scoped: a login an org has not registered covers nobody", async () => {
+    const pem = await makeKeyPem();
+    const fx: Fixture = makeFixture();
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1/commits", commits("example-ci"));
+    const app = createApp({ WEBHOOK_SECRET, GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem }, { fetcher: fx.fetcher });
+    // `example-ci` is registered by example-org only; here it is an
+    // unregistered name and must be asked to sign like anyone else.
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, ciPayload("rnpgp/rnp"));
+    await app.request("/api/github/webhook", { method: "POST", body, headers });
+
+    const check = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/repos/rnpgp/rnp/check-runs"));
+    expect(check!.body).toMatchObject({ conclusion: "failure" });
+    const comment = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments"));
+    expect((comment!.body as Record<string, unknown>)["body"]).toContain("@example-ci");
+  });
+
+  it("attributes a contribution to the configuration allowlist, never to a CLA", () => {
+    const body = closingComment(
+      {
+        verdict: "pass",
+        committers: [{ login: "example-ci", status: "covered", path: "allowlist", matchedBy: "login" }],
+        missing: [],
+        mustSpecify: {},
+      },
+      {},
+    );
+    expect(body).toContain("- @example-ci — contributed under **configuration allowlist**");
+    expect(body).not.toContain("Individual CLA");
+  });
+});
+
 describe("the separate-agreement registry (MSA)", () => {
   it("a registry login is covered outright — no ICLA click, neutral wording, no classification", async () => {
     const pem = await makeKeyPem();
