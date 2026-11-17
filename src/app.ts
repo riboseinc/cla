@@ -338,6 +338,22 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       const legalName = String(form["name"] ?? "").trim();
       if (!legalName) return c.json({ error: "your full legal name is required — it is the signature" }, 400);
 
+      // Idempotent by identity (issue #98): a live current-edition ICLA
+      // for this login already exists, so the POST is a repeat — return
+      // the standing record instead of appending a duplicate. A STALE
+      // signature does not block the re-sign.
+      const standing = await loadSnapshot(
+        { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      const editions = kernelEditions(GENERATED_CONFIG);
+      const existing = standing.snapshot.iclas.find(
+        (r) => r.githubLogin.toLowerCase() === session.login.toLowerCase() && r.edition.textSha256 === editions.icla.textSha256,
+      );
+      if (existing) {
+        return c.json({ signed: true, idempotent: true, edition: existing.edition.version });
+      }
+
       const api = portalApi(env, fetcher, now);
       const { path, commitSha } = await appendRecord(
         { api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now },

@@ -73,7 +73,7 @@ describe("data-repo round trip", () => {
     const app = createApp(ENV(pem), { fetcher: fx.fetcher });
     const session = await makeSessionCookie(
       "op-secret",
-      { sub: "sub-1", login: "tj-91", githubId: 918273, email: "johannes@mtg.example", emailVerified: true },
+      { sub: "sub-9", login: "newsigner", githubId: 4242, email: "johannes@mtg.example", emailVerified: true },
       Date.now(),
     );
     const csrf = newCsrfToken();
@@ -100,7 +100,7 @@ describe("data-repo round trip", () => {
     const { snapshot, rejected } = await loadSnapshot(lister(files), EDITIONS);
     expect(rejected).toEqual([]);
     expect(snapshot.iclas).toHaveLength(1);
-    expect(snapshot.iclas[0]).toMatchObject({ githubLogin: "tj-91", id: expect.any(String) });
+    expect(snapshot.iclas[0]).toMatchObject({ githubLogin: "newsigner", id: expect.any(String) });
     expect(snapshot.iclas[0]!.edition.textSha256).toBe(EDITIONS.icla.textSha256);
   });
 

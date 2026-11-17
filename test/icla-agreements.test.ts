@@ -59,10 +59,14 @@ describe("ICLA signing", () => {
   });
 
   it("signing appends the record bound to the current edition with the election recorded", async () => {
+    // a FRESH identity: the fixture's tj-91 already holds a live ICLA,
+    // and the idempotency guard (issue #98) would return the standing
+    // record instead of appending.
+    const fresh = await makeSessionCookie("op-secret", { sub: "sub-9", login: "newsigner", githubId: 42, email: "new@mtg.example", emailVerified: true }, Date.now());
     const res = await app().request("/icla/sign", {
       method: "POST",
-      headers: { ...authed(), "cf-connecting-ip": "203.0.113.9" },
-      body: new URLSearchParams({ terms: "on", past: "yes", csrf, name: "Johannes Roth", email: "johannes@mtg.example" }),
+      headers: { cookie: `${SESSION_COOKIE}=${fresh}; ${CSRF_COOKIE}=${csrf}`, "cf-connecting-ip": "203.0.113.9" },
+      body: new URLSearchParams({ terms: "on", past: "yes", csrf, name: "Johannes Roth", email: "new@mtg.example" }),
     });
     expect(res.status).toBe(200);
     const out = (await res.json()) as Record<string, unknown>;
@@ -74,8 +78,8 @@ describe("ICLA signing", () => {
     const record = JSON.parse(Buffer.from((put!.body as Record<string, unknown>)["content"] as string, "base64").toString()) as Record<string, unknown>;
     expect(record["signed_from_ip"]).toBe("203.0.113.9");
     expect(record).toMatchObject({
-      github_login: "tj-91",
-      ribose_id_sub: "sub-1",
+      github_login: "newsigner",
+      ribose_id_sub: "sub-9",
       source: "portal",
       past_contributions_included: true,
       email_verified: true,
@@ -136,5 +140,46 @@ describe("edition text serving", () => {
     expect((await a.request(`/agreements/text/icla/${v}`)).status).toBe(200);
     expect((await a.request("/agreements/text/icla/9.9", { headers: authed() })).status).toBe(404);
     expect((await a.request("/agreements/text/nope/1.0", { headers: authed() })).status).toBe(404);
+  });
+});
+
+describe("ICLA idempotency (issue #98)", () => {
+  it("a repeated POST for a live current-edition signer returns the standing record — no duplicate append", async () => {
+    const a = app();
+    const body = new URLSearchParams({ terms: "on", past: "yes", csrf, name: "Johannes Roth", email: "johannes@mtg.example" });
+    const first = await a.request("/icla/sign", { method: "POST", headers: authed(), body });
+    expect(first.status).toBe(200);
+    expect(((await first.json()) as Record<string, unknown>)["idempotent"]).toBe(true);
+
+    const second = await a.request("/icla/sign", { method: "POST", headers: authed(), body });
+    expect(second.status).toBe(200);
+    const out = (await second.json()) as Record<string, unknown>;
+    expect(out["idempotent"]).toBe(true);
+    expect(out["edition"]).toBe(GENERATED_CONFIG.legal.current.icla);
+    // the fixture data already carries tj-91's live ICLA: the repeat appended nothing
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/icla/"))).toBe(false);
+  });
+
+  it("a STALE signature does not block the re-sign", async () => {
+    const a = app();
+    // the fixture's icla record is replaced by a stale-edition one
+    fx.routes.set("/repos/example-org/cla-data/contents/icla/2026/11/tj.json", () =>
+      Response.json({
+        content: Buffer.from(JSON.stringify({
+          id: "icla-tj-old",
+          githubLogin: "tj-91",
+          email: "johannes@mtg.example",
+          claEdition: { kind: "icla", version: "0.9", textSha256: "oldsha" },
+          pastContributionsIncluded: true,
+          source: "portal",
+        })).toString("base64"),
+        encoding: "base64",
+      }, { status: 200 }),
+    );
+    const body = new URLSearchParams({ terms: "on", past: "yes", csrf, name: "Johannes Roth", email: "johannes@mtg.example" });
+    const res = await a.request("/icla/sign", { method: "POST", headers: authed(), body });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Record<string, unknown>)["idempotent"]).toBeUndefined();
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/icla/"))).toBe(true);
   });
 });
