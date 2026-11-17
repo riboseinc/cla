@@ -53,6 +53,12 @@ const lowerAll = (xs: unknown): string[] => arr(xs).flatMap((x) => (str(x) ? [st
 /** "org/name" shape — the only repo reference format the config accepts. */
 const isRepoRef = (s: string): boolean => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(s);
 
+/** A bare addr-spec, or a display name followed by one in angle brackets. */
+const isMailbox = (s: string): boolean => {
+  const addr = "[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+";
+  return new RegExp(`^${addr}$`).test(s) || new RegExp(`^.+<${addr}>$`).test(s);
+};
+
 async function parseEditions(
   raw: unknown,
   kind: "icla" | "ocla",
@@ -165,6 +171,11 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
   const notify = obj(coverage["notify"]);
   const digestThreshold = num(notify["digest_threshold"]) ?? 10;
   const notifyFrom = str(notify["from"]);
+  // The provider's `from` is a mailbox, not a domain: a bare host is
+  // rejected at gen time instead of failing at the first send.
+  if (notifyFrom !== undefined && !isMailbox(notifyFrom)) {
+    errors.push({ path: "coverage.notify.from", message: "must be an email address (Name <addr> allowed)" });
+  }
 
   if (errors.length > 0) return { errors };
 
@@ -186,7 +197,7 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
         ...(minimalChange ? { minimalChange } : {}),
         reposWithoutCla,
         commentSigning: { automatic: bool(commentSigning["automatic"]) ?? false },
-        notify: { digestThreshold, from: notifyFrom ?? `${portalHost}` },
+        notify: { digestThreshold, from: notifyFrom ?? `no-reply@${portalHost}` },
       },
     },
   };

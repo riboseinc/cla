@@ -23,7 +23,7 @@ coverage:
     per_org: { example-org: [ "Example-CI" ] }
   repos_without_cla: [ example-org/mirror ]
   comment_signing: { automatic: false }
-  notify: { digest_threshold: 7, from: notify.example.org }
+  notify: { digest_threshold: 7, from: "Ribose CLA <cla@notify.example.org>" }
 `;
 
 const LEGAL: Record<string, string> = {
@@ -50,6 +50,14 @@ describe("config: valid parse", () => {
     expect(c.legal.editions.icla[0]?.sha256).toBe(shaSync("ICLA v1.0 text body"));
     expect(c.legal.current).toEqual({ icla: "1.0", ocla: "1.0" });
     expect(c.github.dataInstallationId).toBe(42);
+    expect(c.coverage.notify.from).toBe("Ribose CLA <cla@notify.example.org>");
+  });
+
+  it("an absent notify `from` defaults to a mailbox on the portal host", async () => {
+    const noNotify = VALID.replace(/  notify: \{[^\n]*\n/, "");
+    const r = await parseConfig(noNotify, reader);
+    if ("errors" in r) throw new Error(`unexpected errors: ${JSON.stringify(r.errors)}`);
+    expect(r.config.coverage.notify.from).toBe("no-reply@cla.example.org");
   });
 
   it("normalizes allowlists to lowercase (the kernel compares lowercased logins)", async () => {
@@ -104,6 +112,12 @@ describe("config: fails closed at gen time", () => {
   it("unparseable YAML is an error", async () => {
     const r = await parseConfig("instance: [oops", reader);
     expect("errors" in r).toBe(true);
+  });
+
+  it("a notify `from` that is a domain, not a mailbox, is an error", async () => {
+    const bad = VALID.replace('"Ribose CLA <cla@notify.example.org>"', "notify.example.org");
+    const r = await parseConfig(bad, reader);
+    expect("errors" in r && r.errors.some((e) => e.path === "coverage.notify.from")).toBe(true);
   });
 
 });

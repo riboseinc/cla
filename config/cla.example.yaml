@@ -70,5 +70,5 @@ coverage:
     automatic: false
   notify:
     digest_threshold: 10
-    from: notify.example.org
+    from: "Ribose CLA <cla@notify.example.org>"
 

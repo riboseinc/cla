@@ -26,12 +26,12 @@ const memoryD1 = () => {
 const FROM = GENERATED_CONFIG.coverage.notify.from;
 let pem: string;
 let fx: Fixture;
-let mails: { to: string; subject: string }[];
+let mails: { from: string; to: string; subject: string }[];
 
 const mailFixture = () => {
   fx.routes.set("/send", (url, init) => {
-    const b = JSON.parse(init!.body as string) as { to: string[]; subject: string };
-    mails.push({ to: b.to[0]!, subject: b.subject });
+    const b = JSON.parse(init!.body as string) as { from: string; to: string[]; subject: string };
+    mails.push({ from: b.from, to: b.to[0]!, subject: b.subject });
     return Response.json({}, { status: 200 });
   });
 };
@@ -73,6 +73,9 @@ describe("notify leg", () => {
     expect(mails).toHaveLength(1);
     expect(mails[0]!.to).toBe("p@mtg.example"); // from the fixture OCLA's PoC record
     expect(mails[0]!.subject).toContain("mtg-ag");
+    // The provider receives the configured mailbox, never the bare domain.
+    expect(mails[0]!.from).toBe(FROM);
+    expect(FROM).toMatch(/@/);
   });
 
   it("PoC approval mails the requester the outcome", async () => {
