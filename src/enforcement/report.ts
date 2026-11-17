@@ -31,7 +31,7 @@ export type ContributorRow = {
   login: string | null;
   email: string | null;
   state: PersonState;
-  path?: "icla" | "ocla";
+  path?: "icla" | "ocla" | "separate-agreement";
   edition?: string;
   matched_by?: "login" | "email";
   /** The login is covered under a separate written agreement: the click
