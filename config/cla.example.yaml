@@ -12,6 +12,23 @@ instance:
   # management view and never grants coverage.
   roster_managers:
     - example-manager
+  # The separate-agreement registry: STATIC text, seeded once from the
+  # census (2026-11-17); membership changes are deliberate PRs. The
+  # classification is documentation; the app compiles only the logins
+  # and never renders it. Agreements never auto-terminate: removal
+  # happens only when Ribose affirmatively ends one.
+  separate_agreement:
+    staff:
+      - example-staff
+    contractors:
+      - example-contractor
+      - falko-strenzke
+  # The internal roster census: static as well; the view adds live state.
+  roster:
+    members:
+      - login: example-member
+        role: staff
+        name: Example Member
 
 identity:
   issuer: https://id.example.org

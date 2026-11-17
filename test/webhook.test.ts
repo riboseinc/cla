@@ -422,13 +422,9 @@ describe("the separate-agreement registry (MSA)", () => {
         tree: [
           { path: "ocla/2026/03/mtg.json", type: "blob" },
           { path: "icla/2026/11/tj.json", type: "blob" },
-          { path: "msa/2026/11/main.json", type: "blob" },
           { path: "role/2026/11/poc.json", type: "blob" },
         ],
       }), { status: 200, headers: { "content-type": "application/json" } }),
-    );
-    fx.routes.set("/repos/example-org/cla-data/contents/msa/2026/11/main.json", () =>
-      Response.json({ content: Buffer.from(JSON.stringify({ id: "msa-1", logins: ["falko-strenzke"], recorded_at: "2026-11-17T00:00:00Z" })).toString("base64"), encoding: "base64" }, { status: 200 }),
     );
     fx.routes.set("/repos/rnpgp/rnp/pulls/1/commits", () =>
       Response.json([{ author: { login: "falko-strenzke", type: "User" }, commit: { author: { email: "falko@mtg.example" } } }], { status: 200 }),

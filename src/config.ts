@@ -13,7 +13,8 @@ import { createHash } from "node:crypto";
 export type EditionFile = { version: string; file: string; text: string; sha256: string };
 
 export type AppConfig = {
-  instance: { name: string; portalHost: string; signingDocsUrl?: string; rosterManagers?: string[] };
+  instance: { name: string; portalHost: string; signingDocsUrl?: string; rosterManagers?: string[]; separateAgreement?: { logins: string[] } };
+  roster?: { members: Array<{ login: string; role: string; name: string }> };
   identity: { issuer: string; clientId: string };
   legal: {
     editions: { icla: EditionFile[]; ocla: EditionFile[] };
@@ -102,6 +103,23 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
   if (!portalHost) errors.push({ path: "instance.portal_host", message: "required" });
   const signingDocsUrl = str(instance["signing_docs_url"]);
   const rosterManagers = arr(instance["roster_managers"]).map((x) => str(x)).filter((x): x is string => Boolean(x)).map((x) => x.toLowerCase());
+  // The separate-agreement registry: STATIC config text (seeded once
+  // from the census; membership changes are deliberate PRs). The
+  // classification (staff/contractor) is config-documentation only —
+  // the app compiles just the login set and never renders it.
+  const sepRaw = obj(instance["separate_agreement"]);
+  const sepLogins = [...arr(sepRaw["staff"]), ...arr(sepRaw["contractors"])]
+    .map((x) => str(x))
+    .filter((x): x is string => Boolean(x))
+    .map((x) => x.toLowerCase());
+  const separateAgreement = sepLogins.length > 0 ? { logins: [...new Set(sepLogins)] } : undefined;
+  // The internal roster census: static as well; the view adds the live state.
+  const rosterRaw = obj(instance["roster"]);
+  const rosterMembers = arr(rosterRaw["members"])
+    .map((m) => m as Record<string, unknown>)
+    .map((m) => ({ login: str(m["login"]) ?? "", role: str(m["role"]) ?? "staff", name: str(m["name"]) ?? "" }))
+    .filter((m) => m.login);
+  const roster = rosterMembers.length > 0 ? { members: rosterMembers } : undefined;
 
   const identity = obj(r["identity"]);
   const issuer = str(identity["issuer"]);
@@ -152,7 +170,14 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
 
   return {
     config: {
-      instance: { name: name!, portalHost: portalHost!, ...(signingDocsUrl ? { signingDocsUrl } : {}), ...(rosterManagers.length > 0 ? { rosterManagers } : {}) },
+      instance: {
+        name: name!,
+        portalHost: portalHost!,
+        ...(signingDocsUrl ? { signingDocsUrl } : {}),
+        ...(rosterManagers.length > 0 ? { rosterManagers } : {}),
+        ...(separateAgreement ? { separateAgreement } : {}),
+      },
+      ...(roster ? { roster } : {}),
       identity: { issuer: issuer!, clientId: clientId! },
       legal: { editions: { icla: iclaEd.files, ocla: oclaEd.files }, current: { icla: iclaEd.current!, ocla: oclaEd.current! } },
       github: { appSlug: appSlug!, dataRepo: dataRepo!, offlineRepo: offlineRepo!, dataInstallationId: dataInstallationId! },

@@ -624,7 +624,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         kernelEditions(GENERATED_CONFIG),
       );
       const currentSha = kernelEditions(GENERATED_CONFIG).icla.textSha256;
-      const members = (loaded.roster?.members ?? []).map((m) => {
+      const members = (GENERATED_CONFIG.roster?.members ?? []).map((m) => {
         const login = m.login.toLowerCase();
         const linked = loaded.links.some((l) => l.githubLogin.toLowerCase() === login);
         const signedIcla = loaded.snapshot.iclas.filter((r) => r.githubLogin.toLowerCase() === login).sort((a, b) => (a.edition.textSha256 === currentSha ? -1 : b.edition.textSha256 === currentSha ? 1 : 0))[0];
@@ -637,50 +637,13 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       });
       return c.json({
         managers: GENERATED_CONFIG.instance.rosterManagers ?? [],
-        recordedAt: loaded.roster?.recordedAt ?? null,
         members,
       });
     });
 
-    const rosterWrite = async (c: { req: { header: (h: string) => string | undefined }; req2?: unknown }, transform: (members: Array<{ login: string; role: string; name: string }>) => Array<{ login: string; role: string; name: string }>) => {
-      const session = await ses(c);
-      if (!session) return { error: "sign in required" as const, status: 401 as const };
-      if (!rosterManagerOf(session.login)) return { error: "roster manager role required" as const, status: 403 as const };
-      const loaded = await loadSnapshot(
-        { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
-        kernelEditions(GENERATED_CONFIG),
-      );
-      const members = transform(loaded.roster?.members ?? []);
-      await appendRecord(
-        { api: portalApi(env, fetcher, now), installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now },
-        "roster",
-        { id: randomToken(), members, recorded_at: new Date(now()).toISOString(), actor: session.login },
-      );
-      await audit(d1(env), { actor: session.login, action: "roster_update", target: "internal-roster", detail: `members=${members.length}`, at: new Date(now()).toISOString(), id: randomToken() });
-      return { ok: true as const, members };
-    };
-
-    app.post("/roster/add", async (c) => {
-      const form = await c.req.parseBody().catch(() => ({}));
-      if (!csrfOk(c.req.header("cookie"), (form as Record<string, unknown>)["csrf"] as string)) return c.json({ error: "csrf mismatch" }, 403);
-      const login = String((form as Record<string, unknown>)["login"] ?? "").trim().toLowerCase();
-      const role = String((form as Record<string, unknown>)["role"] ?? "") === "contractor" ? "contractor" : "staff";
-      const name = String((form as Record<string, unknown>)["name"] ?? "").trim();
-      if (!login) return c.json({ error: "login is required" }, 400);
-      const r = await rosterWrite(c, (members) => members.some((m) => m.login.toLowerCase() === login) ? members : [...members, { login, role, name }]);
-      if ("error" in r) return c.json({ error: r.error }, r.status);
-      return c.json({ added: login, members: r.members.length });
-    });
-
-    app.post("/roster/remove", async (c) => {
-      const form = await c.req.parseBody().catch(() => ({}));
-      if (!csrfOk(c.req.header("cookie"), (form as Record<string, unknown>)["csrf"] as string)) return c.json({ error: "csrf mismatch" }, 403);
-      const login = String((form as Record<string, unknown>)["login"] ?? "").trim().toLowerCase();
-      if (!login) return c.json({ error: "login is required" }, 400);
-      const r = await rosterWrite(c, (members) => members.filter((m) => m.login.toLowerCase() !== login));
-      if ("error" in r) return c.json({ error: r.error }, r.status);
-      return c.json({ removed: login, members: r.members.length });
-    });
+    // The roster is STATIC policy (instance config): membership changes
+    // are deliberate PRs to the config repo, never runtime writes. The
+    // view above adds the live state; governance lives in git.
 
     app.get("/admin-orgs", async (c) => {
       const session = await ses(c);
@@ -869,21 +832,15 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       return c.json({ ok: true, ...r });
     });
 
-    app.post("/admin/msa", async (c) => {
+    app.post("/admin/msa-sync-queue", async (c) => {
       if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
-      const body = (await opsForm(c)) as Record<string, unknown>;
-      const logins = Array.isArray(body["logins"]) ? (body["logins"] as unknown[]).map((l) => String(l).trim().toLowerCase()).filter(Boolean) : [];
-      if (logins.length === 0) return c.json({ error: "logins[] is required" }, 400);
-      const { path } = await appendRecord(
-        { api: portalApi(env, fetcher, now), installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now },
-        "msa",
-        { id: randomToken(), logins, recorded_at: new Date(now()).toISOString(), actor: "ops" },
-      );
-      await ops(c, "msa-sync", "separate-agreement registry", `logins=${logins.length}`);
-      // attribution wording changed for every login on the list: their
-      // open pull requests re-evaluate through the write-back sweep.
+      // The registry is STATIC config: after a deploy that changed it,
+      // this one call re-propagates the wording by enqueueing the
+      // compiled list for the write-back sweep (idempotent).
+      const logins = GENERATED_CONFIG.instance.separateAgreement?.logins ?? [];
       await enqueueSweepFor(env, logins);
-      return c.json({ recorded: true, logins: logins.length, record: path });
+      await ops(c, "msa-sync-queue", "separate-agreement registry", `logins=${logins.length}`);
+      return c.json({ queued: logins.length });
     });
 
     app.post("/admin/sweep", async (c) => {
