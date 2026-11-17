@@ -164,6 +164,9 @@ describe("repos-coverage: route posture", () => {
     expect(out.repos[0]).toMatchObject({ repo: "org/empty", in_scope: true, contributors: [] });
     expect(out.repos[0].note).toContain("empty repository");
     expect(out.notes.join(" ")).toContain("administration permission");
+    // A store that loaded nothing reads as "everyone outstanding" — the
+    // report must say what it loaded so that failure is never silent.
+    expect(out.notes[0]).toBe("records loaded: 1 ICLA, 1 OCLA");
   });
 
   it("a step covers `limit` repos and hands back the cursor", async () => {

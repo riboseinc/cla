@@ -184,10 +184,11 @@ export async function repoCoverageStep(
   const slice = page.slice(cursor.offset, cursor.offset + chunk);
 
   const editions = kernelEditions(deps.config);
-  const { snapshot } = await loadSnapshot(
+  const loaded = await loadSnapshot(
     { listRecords: makeListRecords(deps.api, deps.config.github.dataInstallationId, deps.config.github.dataRepo) },
     editions,
   );
+  const { snapshot } = loaded;
   // The separate-agreement registry is static config since #89 — inject it
   // exactly as the enforcement path does, or the flag is dead code here.
   snapshot.msaLogins = deps.config.instance.separateAgreement?.logins ?? [];
@@ -228,6 +229,10 @@ export async function repoCoverageStep(
     next,
     window,
     notes: [
+      // A store that loaded nothing reads as "everyone outstanding" — a
+      // whole-estate gap that looks like ordinary drift. The report says
+      // what it actually loaded, and names rejected records (fail-visible).
+      `records loaded: ${snapshot.iclas.length} ICLA, ${snapshot.oclas.length} OCLA${loaded.rejected.length > 0 ? `; ${loaded.rejected.length} rejected: ${loaded.rejected.slice(0, 5).map((r) => `${r.path} (${r.reason})`).join(", ")}` : ""}`,
       "required-check status is not readable by the App (it holds no administration permission) — tracked per repo in riboseinc/cla#53",
       "excluded repositories (coverage.repos_without_cla) are reported with in_scope=false and no contributors",
     ],
