@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { createApp } from "../src/app";
+import { parseMailbox } from "../src/notify/mail";
 import { makeSessionCookie, newCsrfToken, SESSION_COOKIE, CSRF_COOKIE } from "../src/portal/session";
 import { makeFixture, makeKeyPem, type Fixture } from "./helpers";
 import { GENERATED_CONFIG } from "../src/generated/config";
@@ -65,6 +66,12 @@ beforeEach(async () => {
 });
 
 describe("notify leg", () => {
+  it("the binding's From is parsed from the configured mailbox", () => {
+    expect(parseMailbox("Ribose CLA <cla@notify.example.org>")).toEqual({ email: "cla@notify.example.org", name: "Ribose CLA" });
+    expect(parseMailbox("cla@notify.example.org")).toEqual({ email: "cla@notify.example.org" });
+    expect(parseMailbox("<cla@notify.example.org>")).toEqual({ email: "cla@notify.example.org" });
+  });
+
   it("a join request mails the PoC of record", async () => {
     const app = createApp(ENV(pem), { fetcher: fx.fetcher });
     const res = await app.request("/organizations/mtg-ag/join", { method: "POST", headers: { cookie: `${SESSION_COOKIE}=${memberSession}` } });
@@ -119,13 +126,13 @@ describe("notify leg", () => {
   });
 
   it("the Cloudflare Email Service binding is the first posture", async () => {
-    const sent: { from: string; to: string; subject: string; text: string }[] = [];
+    const sent: { from: { email: string; name?: string }; to: string; subject: string; text: string }[] = [];
     const env = {
       ...ENV(pem),
       MAIL_PROVIDER_URL: undefined,
       MAIL_PROVIDER_KEY: undefined,
       EMAIL: {
-        send: async (message: { from: string; to: string; subject: string; text: string }) => {
+        send: async (message: { from: { email: string; name?: string }; to: string; subject: string; text: string }) => {
           sent.push(message);
           return { messageId: "test" };
         },
@@ -137,7 +144,8 @@ describe("notify leg", () => {
     expect(((await res.json()) as Record<string, unknown>)["notified"]).toBe(true);
     expect(mails).toHaveLength(0); // the HTTPS provider is not used
     expect(sent).toHaveLength(1);
-    expect(sent[0]!.from).toBe(FROM);
+    // Cloudflare wants { email, name }, not the configured RFC 5322 string.
+    expect(sent[0]!.from).toEqual({ email: "cla@notify.example.org", name: "Ribose CLA" });
     expect(sent[0]!.to).toBe("p@mtg.example");
     expect(sent[0]!.subject).toContain("mtg-ag");
   });

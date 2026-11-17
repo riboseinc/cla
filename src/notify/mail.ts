@@ -16,10 +16,27 @@ import type { FetchLike } from "../github/api";
  * of per-request spam.
  */
 
+/** An address with an optional display name, the binding's `from` shape. */
+export type EmailAddress = { email: string; name?: string };
+
 /** The minimal shape of the Cloudflare Email Service binding. */
 export type EmailBinding = {
-  send(message: { from: string; to: string; subject: string; text?: string }): Promise<unknown>;
+  send(message: { from: string | EmailAddress; to: string; subject: string; text?: string }): Promise<unknown>;
 };
+
+/**
+ * Split a configured mailbox into the binding's `{ email, name }` shape.
+ * The config accepts both `Name <addr>` and a bare `addr`; Cloudflare
+ * wants the object, not the RFC 5322 string the HTTPS providers take.
+ */
+export function parseMailbox(from: string): EmailAddress {
+  const angled = /^\s*(.*?)\s*<([^\s@<>]+@[^\s@<>]+)>$/.exec(from);
+  if (angled) {
+    const name = angled[1]!;
+    return name ? { email: angled[2]!, name } : { email: angled[2]! };
+  }
+  return { email: from.trim() };
+}
 
 export type MailDeps = {
   fetcher: FetchLike;
@@ -37,7 +54,7 @@ export async function sendMail(deps: MailDeps, to: string, subject: string, text
   if (!to.includes("@")) return { sent: false, reason: "refusing to send to a non-address" };
   try {
     if (deps.binding) {
-      await deps.binding.send({ from: deps.from, to, subject, text });
+      await deps.binding.send({ from: parseMailbox(deps.from), to, subject, text });
       return { sent: true };
     }
     if (!deps.providerUrl || !deps.providerKey) {
