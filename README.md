@@ -27,8 +27,12 @@ code edit.
 - Multi-agreement contributors **specify per PR** under which agreement
   a contribution is made; after merge the App posts which CLA the
   contribution was made under.
-- Staff vs contractors are distinguished by **identity-service roles**;
-  contractors deliberately sign or join like any external contributor.
+- **Everyone signs**: employment or a service agreement does not by
+  itself cover a contribution. Ribose staff and contractors sign the
+  same ICLA as any other contributor; where an existing agreement
+  governs, the signature records only the GitHub-account association.
+  An OCLA Schedule A is the alternative for employees of an
+  organization that has executed one.
 
 ## The four-repo architecture
 

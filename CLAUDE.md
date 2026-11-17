@@ -38,9 +38,10 @@ Single file/case: `npm test -- test/foo.test.ts`, `npm test -- -t "name"`.
    rewritten; corrections are new records. CLA texts are append-only
    editions (deprecation marks `current`, files are never deleted).
 5. **Coverage precedence** (kernel): allowlist -> current ICLA ->
-   current OCLA Schedule A (mods folded in order) -> staff employment
-   via identity-service roles. Multiple paths => must-specify, never
-   guess. Contractors are deliberately not employment-covered.
+   current OCLA Schedule A (mods folded in order). Multiple paths =>
+   must-specify, never guess. The signature is the coverage: employment
+   or a service agreement alone covers nobody; Ribose staff and
+   contractors sign the ICLA like any other contributor.
 6. **Editions are content-addressed** — `{kind, version, text_sha256}`;
    staleness is evaluated lazily; no migration jobs.
 7. **Least privilege** — the App never configures branch protection
