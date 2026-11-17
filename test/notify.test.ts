@@ -117,4 +117,42 @@ describe("notify leg", () => {
     expect(((await res.json()) as Record<string, unknown>)["notified"]).toBe(false);
     expect(mails).toHaveLength(0);
   });
+
+  it("the Cloudflare Email Service binding is the first posture", async () => {
+    const sent: { from: string; to: string; subject: string; text: string }[] = [];
+    const env = {
+      ...ENV(pem),
+      MAIL_PROVIDER_URL: undefined,
+      MAIL_PROVIDER_KEY: undefined,
+      EMAIL: {
+        send: async (message: { from: string; to: string; subject: string; text: string }) => {
+          sent.push(message);
+          return { messageId: "test" };
+        },
+      },
+    } as unknown as Env;
+    const app = createApp(env, { fetcher: fx.fetcher });
+    const res = await app.request("/organizations/mtg-ag/join", { method: "POST", headers: { cookie: `${SESSION_COOKIE}=${memberSession}` } });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Record<string, unknown>)["notified"]).toBe(true);
+    expect(mails).toHaveLength(0); // the HTTPS provider is not used
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.from).toBe(FROM);
+    expect(sent[0]!.to).toBe("p@mtg.example");
+    expect(sent[0]!.subject).toContain("mtg-ag");
+  });
+
+  it("a failing binding degrades honestly: the flow succeeds, nothing claims delivery", async () => {
+    const env = {
+      ...ENV(pem),
+      MAIL_PROVIDER_URL: undefined,
+      MAIL_PROVIDER_KEY: undefined,
+      EMAIL: { send: async () => { throw new Error("E_SENDER_NOT_VERIFIED"); } },
+    } as unknown as Env;
+    const app = createApp(env, { fetcher: fx.fetcher });
+    const res = await app.request("/organizations/mtg-ag/join", { method: "POST", headers: { cookie: `${SESSION_COOKIE}=${memberSession}` } });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Record<string, unknown>)["notified"]).toBe(false);
+    expect(mails).toHaveLength(0);
+  });
 });

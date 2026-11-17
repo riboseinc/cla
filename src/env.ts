@@ -3,6 +3,8 @@
  * Every secret here is fail-closed when unset — postures never soften
  * (docs/design.md §9).
  */
+import type { EmailBinding } from "./notify/mail";
+
 export type Env = {
   /** GitHub App id (JWT `iss` claim) + private key (PEM) — unset closes all GitHub legs. */
   GITHUB_APP_ID?: string;
@@ -22,6 +24,10 @@ export type Env = {
    *  portal's OIDC calls ride env.IDENTITY.fetch() when wired — same-
    *  account delivery with no public-edge detour. Unset: plain fetch. */
   IDENTITY?: Fetcher;
+  /** The Cloudflare Email Service send binding — the preferred mail
+   *  transport when wired; unset leaves the HTTPS provider (or the
+   *  honest no-op) in force. */
+  EMAIL?: EmailBinding;
   /** Resend-shaped mail provider; unset = honest no-op (notify leg). */
   MAIL_PROVIDER_URL?: string;
   MAIL_PROVIDER_KEY?: string;

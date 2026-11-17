@@ -14,6 +14,15 @@ binding = "DB"
 database_name = "cla-ephemeral"
 database_id = "00000000-0000-0000-0000-000000000000"
 
+# The preferred mail transport: the Cloudflare Email Service binding.
+# The operator onboards the sending domain (Email Sending → SPF/DKIM on
+# the cf-bounce subdomain) and the sender stays in config
+# (`coverage.notify.from`). Unset: the Resend-shaped HTTPS provider or
+# the honest no-op applies.
+# [[send_email]]
+# name = "EMAIL"
+# remote = true
+
 # [[kv_namespaces]]
 # binding = "CACHE"
 # id = "00000000000000000000000000000000"
