@@ -869,6 +869,23 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       return c.json({ ok: true, ...r });
     });
 
+    app.post("/admin/msa", async (c) => {
+      if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
+      const body = (await opsForm(c)) as Record<string, unknown>;
+      const logins = Array.isArray(body["logins"]) ? (body["logins"] as unknown[]).map((l) => String(l).trim().toLowerCase()).filter(Boolean) : [];
+      if (logins.length === 0) return c.json({ error: "logins[] is required" }, 400);
+      const { path } = await appendRecord(
+        { api: portalApi(env, fetcher, now), installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now },
+        "msa",
+        { id: randomToken(), logins, recorded_at: new Date(now()).toISOString(), actor: "ops" },
+      );
+      await ops(c, "msa-sync", "separate-agreement registry", `logins=${logins.length}`);
+      // attribution wording changed for every login on the list: their
+      // open pull requests re-evaluate through the write-back sweep.
+      await enqueueSweepFor(env, logins);
+      return c.json({ recorded: true, logins: logins.length, record: path });
+    });
+
     app.post("/admin/sweep", async (c) => {
       if (!opsGuard(c)) return c.json({ error: "forbidden" }, 403);
       const r = await drainSweepStep(env, fetcher);

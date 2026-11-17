@@ -68,6 +68,11 @@ export type StoreSnapshot = {
   /** Clause-7 declarations: the work is submitted on behalf of a named
    *  third party; the contributor's own ICLA still gates coverage. */
   thirdParties?: Array<{ repo: string; pr: number; login: string; name: string }>;
+  /** Logins whose contributions fall under a separate written agreement
+   *  with Ribose (the registry lives in the private data repo; the
+   *  classification stays there and is never rendered publicly). The
+   *  click still gates; the ATTRIBUTION differs. */
+  msaLogins?: string[];
 };
 
 // ---- outputs ----
@@ -77,7 +82,7 @@ export type AgreementRef =
   | { kind: "ocla"; version: string; oclaId: string; orgSlug: string };
 
 export type CommitterVerdict =
-  | { login: string | null; status: "covered"; path: "allowlist" | "icla" | "ocla"; agreement?: AgreementRef; matchedBy: "login" | "email" }
+  | { login: string | null; status: "covered"; path: "allowlist" | "icla" | "ocla"; agreement?: AgreementRef; matchedBy: "login" | "email"; underSeparateAgreement?: boolean }
   | { login: string | null; status: "must-specify"; options: AgreementRef[]; matchedBy: "login" | "email" }
   | { login: string | null; status: "missing" };
 
@@ -179,9 +184,10 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
       resolvedLogin = c.login;
     }
 
+    const separate = resolvedLogin ? (snap.msaLogins ?? []).map(normalize).includes(normalize(resolvedLogin)) : false;
     if (paths.length === 1) {
       const p = paths[0]!;
-      committers.push({ login: resolvedLogin, status: "covered", path: p.path, agreement: p.agreement, matchedBy });
+      committers.push({ login: resolvedLogin, status: "covered", path: p.path, agreement: p.agreement, matchedBy, ...(separate ? { underSeparateAgreement: true } : {}) });
     } else if (paths.length > 1) {
       const options = paths.map((p) => p.agreement!).filter(Boolean);
       // A stored election for THIS (repo, pr, login) resolves the ambiguity
@@ -196,7 +202,7 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
         : undefined;
       const match = chosen ? paths.find((p) => agreementKey(p.agreement!) === agreementKey(chosen.agreement)) : undefined;
       if (match) {
-        committers.push({ login: resolvedLogin, status: "covered", path: match.path, agreement: match.agreement, matchedBy });
+        committers.push({ login: resolvedLogin, status: "covered", path: match.path, agreement: match.agreement, matchedBy, ...(separate ? { underSeparateAgreement: true } : {}) });
       } else {
         committers.push({ login: resolvedLogin, status: "must-specify", options, matchedBy });
         if (resolvedLogin) mustSpecify[resolvedLogin] = options;

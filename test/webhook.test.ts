@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { beforeEach } from "vitest";
 import { verifyWebhookSignature, parseEvent } from "../src/github/webhook";
-import { conclusionFor, commentBody, COMMENT_MARKER, CHECK_NAME } from "../src/enforcement/checks";
+import { conclusionFor, commentBody, closingComment, COMMENT_MARKER, CHECK_NAME } from "../src/enforcement/checks";
 import { fetchPrCommitters } from "../src/github/pulls";
 import { makeFixture, pullRequestPayload, signedBody, makeKeyPem, hmacHex, WEBHOOK_SECRET, type Fixture } from "./helpers";
 import { GithubApi, type GithubApiDeps } from "../src/github/api";
@@ -408,5 +408,56 @@ describe("bot message UX (issue #60)", () => {
     const text = (comment!.body as Record<string, unknown>)["body"] as string;
     expect(text).toContain("@tj-91");
     expect(text).not.toContain("@estate-release-manager");
+  });
+});
+
+describe("the separate-agreement registry (MSA)", () => {
+  it("a covered committer on the registry reads neutrally: no ICLA claim, no classification", async () => {
+    const pem = await makeKeyPem();
+    const fx: Fixture = makeFixture();
+    // tj-91 is on the registry: their ICLA still covers, but the
+    // attribution names the separate agreement and nothing else.
+    fx.routes.set("/repos/example-org/cla-data/git/trees/HEAD", () =>
+      new Response(JSON.stringify({
+        tree: [
+          { path: "ocla/2026/03/mtg.json", type: "blob" },
+          { path: "icla/2026/11/tj.json", type: "blob" },
+          { path: "msa/2026/11/main.json", type: "blob" },
+          { path: "role/2026/11/poc.json", type: "blob" },
+        ],
+      }), { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    fx.routes.set("/repos/example-org/cla-data/contents/msa/2026/11/main.json", () =>
+      Response.json({ content: Buffer.from(JSON.stringify({ id: "msa-1", logins: ["falko-strenzke"], recorded_at: "2026-11-17T00:00:00Z" })).toString("base64"), encoding: "base64" }, { status: 200 }),
+    );
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1/commits", () =>
+      Response.json([{ author: { login: "falko-strenzke", type: "User" }, commit: { author: { email: "falko@mtg.example" } } }], { status: 200 }),
+    );
+    const app = createApp({ WEBHOOK_SECRET, GITHUB_APP_ID: "1", APP_PRIVATE_KEY: pem }, { fetcher: fx.fetcher });
+    const { body, headers } = await signedBody(WEBHOOK_SECRET, pullRequestPayload());
+    const res = await app.request("/api/github/webhook", { method: "POST", body, headers });
+    expect(res.status).toBe(200);
+
+    const check = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/repos/rnpgp/rnp/check-runs"));
+    expect((check!.body as Record<string, unknown>)["output"]).toMatchObject({
+      summary: expect.stringContaining("an existing Ribose agreement"),
+    });
+    expect(fx.calls.some((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments"))).toBe(false);
+  });
+
+  it("a merged PR's closing statement carries the neutral attribution sentence", () => {
+    const verdict: PrVerdict = {
+      verdict: "pass",
+      committers: [
+        { login: "hassanakbar", status: "covered", path: "icla", agreement: { kind: "icla", version: "1.0" }, matchedBy: "login", underSeparateAgreement: true },
+      ],
+      missing: [],
+      mustSpecify: {},
+    };
+    const text = closingComment(verdict, {});
+    expect(text).toContain("@hassanakbar — this work is submitted under an existing Ribose agreement; the CLA process does not apply.");
+    expect(text).not.toContain("Individual CLA v");
+    expect(text).not.toContain("staff");
+    expect(text).not.toContain("contractor");
   });
 });

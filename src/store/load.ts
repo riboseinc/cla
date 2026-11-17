@@ -34,6 +34,11 @@ export type LoadedSnapshot = {
   /** The internal roster's latest record (issue #62): a management
    *  grouping only — it never grants coverage. */
   roster?: { recordedAt: string; members: Array<{ login: string; role: string; name: string }> };
+  /** The latest separate-agreement registry record: the logins whose
+   *  contributions fall under a separate written agreement with Ribose.
+   *  The classification stays in the private data repo; nothing public
+   *  renders it. */
+  msa?: { recordedAt: string; logins: string[] };
 };
 
 export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise<LoadedSnapshot> {
@@ -49,6 +54,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
   const attributions: NonNullable<StoreSnapshot["attributions"]> = [];
   const thirdParties: NonNullable<StoreSnapshot["thirdParties"]> = [];
   let roster: { recordedAt: string; members: Array<{ login: string; role: string; name: string }> } | undefined;
+  let msa: { recordedAt: string; logins: string[] } | undefined;
   const rejected: { path: string; reason: string }[] = [];
 
   const sorted = [...paths].sort(); // creation order: ts-encoded paths sort correctly
@@ -86,6 +92,12 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
     } else if (path.startsWith("attribution/")) {
       const r = parseAttribution(parsed);
       r ? attributions.push({ repo: r.repo, pr: r.pr, login: r.login, agreement: r.agreement as NonNullable<StoreSnapshot["attributions"]>[number]["agreement"] }) : rejected.push({ path, reason: "invalid attribution" });
+    } else if (path.startsWith("msa/")) {
+      const o = parsed as Record<string, unknown>;
+      const at = typeof o["recorded_at"] === "string" ? o["recorded_at"] : undefined;
+      const loginsRaw = Array.isArray(o["logins"]) ? o["logins"] : [];
+      const logins = loginsRaw.map((l) => (typeof l === "string" ? l : "")).filter(Boolean);
+      at && logins.length > 0 && (!msa || at > msa.recordedAt) ? (msa = { recordedAt: at, logins }) : rejected.push({ path, reason: "invalid msa" }) && undefined;
     } else if (path.startsWith("roster/")) {
       const o = parsed as Record<string, unknown>;
       const at = typeof o["recorded_at"] === "string" ? o["recorded_at"] : undefined;
@@ -125,9 +137,11 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
       revokedIds, // kernel re-checks; harmless, keeps the revocation fact visible
       attributions,
       thirdParties,
+      ...(msa ? { msaLogins: msa.logins } : {}),
     },
     rejected,
     roster,
+    msa,
     mods,
     roles: roles.filter((r) => !revoked.has(r.id)),
     links: links.filter((l) => !revoked.has(l.id)),

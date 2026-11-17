@@ -34,7 +34,10 @@ export function checkRunBody(verdict: PrVerdict, portalBase: string, signingDocs
   const lines: string[] = [];
   for (const c of verdict.committers) {
     if (c.status === "covered") {
-      lines.push(`- @${c.login ?? "(unlinked)"} — covered via **${c.path}**${c.agreement && "orgSlug" in c.agreement ? ` (${c.agreement.orgSlug} OCLA)` : ""}`);
+      const via = c.underSeparateAgreement
+        ? "**an existing Ribose agreement**"
+        : `**${c.path}**${c.agreement && "orgSlug" in c.agreement ? ` (${c.agreement.orgSlug} OCLA)` : ""}`;
+      lines.push(`- @${c.login ?? "(unlinked)"} — covered via ${via}`);
     } else if (c.status === "must-specify") {
       const links = c.options.map((o) => (o.kind === "icla" ? "[Individual CLA]" : `[${o.orgSlug} OCLA]`)).join(" ");
       lines.push(`- @${c.login ?? "(unlinked)"} — covered by multiple agreements; **specify under which one this PR is contributed**: ${links}`);
@@ -82,7 +85,9 @@ export function commentBody(
       // Allowlist rows stay in the check summary; the conversation
       // comment omits them — they are noise for humans.
       if (c.path === "allowlist") continue;
-      rows.push(`| @${c.login ?? "(unlinked)"} | covered (${c.path}${c.agreement && "orgSlug" in c.agreement ? ` — ${c.agreement.orgSlug}` : ""}) |`);
+      rows.push(c.underSeparateAgreement
+        ? `| @${c.login ?? "(unlinked)"} | this work is submitted under an existing Ribose agreement; the CLA process does not apply. |`
+        : `| @${c.login ?? "(unlinked)"} | covered (${c.path}${c.agreement && "orgSlug" in c.agreement ? ` — ${c.agreement.orgSlug}` : ""}) |`);
     } else if (c.status === "must-specify") {
       const links = (opts.attributionLinks?.[c.login ?? ""] ?? c.options.map((o) => ({ label: o.kind === "icla" ? `Individual CLA v${o.version}` : `${o.orgSlug} OCLA v${o.version}`, url: `${portalBase}/agreements` })))
         .map((l) => `[${l.label}](${l.url})`)
@@ -134,6 +139,11 @@ export function closingComment(verdict: PrVerdict, elected: Record<string, Agree
   }
   const rows = verdict.committers.map((c) => {
     if (c.status === "covered") {
+      // The separate-agreement sentence carries its own shape: it reads
+      // as a sentence, not as a "contributed under X" fragment.
+      if (c.underSeparateAgreement) {
+        return `- @${c.login ?? "(unlinked)"} — this work is submitted under an existing Ribose agreement; the CLA process does not apply.`;
+      }
       const under =
         c.path === "allowlist"
           ? "configuration allowlist"
