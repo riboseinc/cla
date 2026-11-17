@@ -134,7 +134,7 @@ export async function closeMergedPullRequest(
   const hasGaps = verdict.missing.length > 0 || Object.keys(verdict.mustSpecify).length > 0 || verdict.minimalChange === true;
   const onBehalf = (loaded.snapshot.thirdParties ?? []).find((t) => t.pr === args.prNumber && t.repo.toLowerCase() === full.toLowerCase())?.name;
   if (!hasElections && !hasGaps && !onBehalf) return { posted: false };
-  await postClosingComment(deps.api, args.installationId, full, args.prNumber, closingComment(verdict, elected, onBehalf));
+  await postClosingComment(deps.api, args.installationId, full, args.prNumber, closingComment(verdict, elected, onBehalf, deps.config.instance.separateAgreement?.logins));
   return { posted: true };
 }
 

@@ -42,7 +42,11 @@ export function checkRunBody(verdict: PrVerdict, portalBase: string, signingDocs
       const links = c.options.map((o) => (o.kind === "icla" ? "[Individual CLA]" : `[${o.orgSlug} OCLA]`)).join(" ");
       lines.push(`- @${c.login ?? "(unlinked)"} — covered by multiple agreements; **specify under which one this PR is contributed**: ${links}`);
     } else {
-      lines.push(`- @${c.login ?? "(unlinked)"} — **not covered**: [sign the Individual CLA](${portalBase}/icla)${signingDocsUrl ? ` ([how to sign](${signingDocsUrl}))` : ""} or [join your organization's OCLA](${portalBase}/organizations)`);
+      if (c.login === null && c.email) {
+        lines.push(`- (unlinked, ${c.email}) — the commit's author email is not linked to any GitHub account. Configure git to commit with an email verified under your GitHub account (Settings → Emails), then push again; if Ribose also requires a signed agreement from you: [sign the Individual CLA](${portalBase}/icla)${signingDocsUrl ? ` ([how to sign](${signingDocsUrl}))` : ""}`);
+      } else {
+        lines.push(`- @${c.login ?? "(unlinked)"} — **not covered**: [sign the Individual CLA](${portalBase}/icla)${signingDocsUrl ? ` ([how to sign](${signingDocsUrl}))` : ""} or [join your organization's OCLA](${portalBase}/organizations)`);
+      }
     }
   }
   const summary = lines.length > 0 ? lines.join("\n") : "No human committers to evaluate.";
@@ -93,6 +97,8 @@ export function commentBody(
         .map((l) => `[${l.label}](${l.url})`)
         .join(" · ");
       rows.push(`| @${c.login ?? "(unlinked)"} | This pull request is covered by more than one agreement. Choose the one that applies: ${links}. |`);
+    } else if (c.login === null && c.email) {
+      rows.push(`| (unlinked) | Your commit carries the author email \`${c.email}\`, which is not linked to any GitHub account. Configure git to commit with an email verified under your GitHub account (Settings → Emails), then push again. If Ribose also requires a signed agreement from you: [sign the Individual CLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""}. |`);
     } else {
       const stale = c.login ? opts.staleEditions?.[c.login] : undefined;
       const what = stale
@@ -122,7 +128,7 @@ export function commentBody(
 /** The closing statement on merge — the public attribution record (docs/design.md §3.11). */
 export const CLOSING_MARKER = "<!-- ribose-cla:closing -->";
 
-export function closingComment(verdict: PrVerdict, elected: Record<string, AgreementRef>, onBehalf?: string): string {
+export function closingComment(verdict: PrVerdict, elected: Record<string, AgreementRef>, onBehalf?: string, msaLogins?: string[]): string {
   // The proportionality disclosure: the merged contribution landed
   // without CLA coverage because the change was under the thresholds
   // (issue #58) — attribution honesty, never silence.
@@ -133,8 +139,12 @@ export function closingComment(verdict: PrVerdict, elected: Record<string, Agree
       "- The change was under the minimal-change threshold, so the CLA was not enforced. The contribution is attributed to its committers as visible in history.",
     ].join("\n");
   }
-  const lines = Object.keys(elected).length > 0 ? ["", "Elections recorded during review:"] : [];
-  for (const [login, a] of Object.entries(elected)) {
+  // A registry login cannot elect an agreement: the registry supersedes
+  // elections, so their election lines never render.
+  const superseded = (login: string): boolean => (msaLogins ?? []).map((m) => m.toLowerCase()).includes(login.toLowerCase());
+  const liveElections = Object.entries(elected).filter(([login]) => !superseded(login));
+  const lines = liveElections.length > 0 ? ["", "Elections recorded during review:"] : [];
+  for (const [login, a] of liveElections) {
     lines.push(`- @${login} — under ${a.kind === "icla" ? `the Individual CLA v${a.version}` : `the ${a.orgSlug} OCLA v${a.version}`}`);
   }
   const rows = verdict.committers.map((c) => {
