@@ -37,7 +37,8 @@ export function checkRunBody(verdict: PrVerdict, portalBase: string, signingDocs
       const via = c.underSeparateAgreement
         ? "**an existing Ribose agreement**"
         : `**${c.path}**${c.agreement && "orgSlug" in c.agreement ? ` (${c.agreement.orgSlug} OCLA)` : ""}`;
-      lines.push(`- @${c.login ?? "(unlinked)"} — covered via ${via}`);
+      const who = c.login === null ? "(unlinked)" : `@${c.login}`;
+      lines.push(`- ${who} — covered via ${via}`);
     } else if (c.status === "must-specify") {
       const links = c.options.map((o) => (o.kind === "icla" ? "[Individual CLA]" : `[${o.orgSlug} OCLA]`)).join(" ");
       lines.push(`- @${c.login ?? "(unlinked)"} — covered by multiple agreements; **specify under which one this PR is contributed**: ${links}`);
@@ -89,9 +90,10 @@ export function commentBody(
       // Allowlist rows stay in the check summary; the conversation
       // comment omits them — they are noise for humans.
       if (c.path === "allowlist") continue;
+      const who = c.login === null ? "(unlinked)" : `@${c.login}`;
       rows.push(c.underSeparateAgreement
-        ? `| @${c.login ?? "(unlinked)"} | this work is submitted under an existing Ribose agreement; the CLA process does not apply. |`
-        : `| @${c.login ?? "(unlinked)"} | covered (${c.path}${c.agreement && "orgSlug" in c.agreement ? ` — ${c.agreement.orgSlug}` : ""}) |`);
+        ? `| ${who} | this work is submitted under an existing Ribose agreement; the CLA process does not apply. |`
+        : `| ${who} | covered (${c.path}${c.agreement && "orgSlug" in c.agreement ? ` — ${c.agreement.orgSlug}` : ""}) |`);
     } else if (c.status === "must-specify") {
       const links = (opts.attributionLinks?.[c.login ?? ""] ?? c.options.map((o) => ({ label: o.kind === "icla" ? `Individual CLA v${o.version}` : `${o.orgSlug} OCLA v${o.version}`, url: `${portalBase}/agreements` })))
         .map((l) => `[${l.label}](${l.url})`)
