@@ -21,9 +21,9 @@
     "test": "npm run gen && vitest run",
     "build": "npm run gen && npm run build -w @riboseinc/cla-site && wrangler deploy --dry-run --config wrangler.example.toml",
     "dev": "npm run gen && wrangler dev --config wrangler.example.toml",
-    "site:dev": "npm run dev -w @riboseinc/cla-site",
-    "site:build": "npm run build -w @riboseinc/cla-site",
-    "site:check": "npm run check -w @riboseinc/cla-site",
+    "site:dev": "npm run gen && npm run dev -w @riboseinc/cla-site",
+    "site:build": "npm run gen && npm run build -w @riboseinc/cla-site",
+    "site:check": "npm run gen && npm run check -w @riboseinc/cla-site",
     "e2e": "playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {

@@ -1,5 +1,6 @@
 ---
 import "../styles/site.css";
+import { GENERATED_CONFIG } from "../../../src/generated/config";
 
 interface Props {
   title: string;
@@ -13,6 +14,16 @@ const nav = [
   { href: "/agreements", label: "My agreements" },
 ];
 const current = Astro.url.pathname;
+// The agreement documents name the editions this deployment compiled as
+// current (issue #123): a baked-in version would leave the footer
+// labelling — and linking to — the superseded text after a flip.
+const agreements = (["icla", "ocla"] as const).map((kind) => {
+  const version = GENERATED_CONFIG.legal.current[kind];
+  return {
+    href: `/agreements/text/${kind}/${version}`,
+    label: `${kind === "icla" ? "Individual" : "Organization"} CLA (edition ${version})`,
+  };
+});
 ---
 
 <html lang="en">
@@ -101,8 +112,9 @@ const current = Astro.url.pathname;
           <nav aria-label="Documents">
             <p class="eyebrow">Agreements</p>
             <ul class="mt-4 space-y-2.5 text-sm">
-              <li><a href="/agreements/text/icla/1.0" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white">Individual CLA (edition 1.0)</a></li>
-              <li><a href="/agreements/text/ocla/1.0" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white">Organization CLA (edition 1.0)</a></li>
+              {agreements.map((a) => (
+                <li><a href={a.href} class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white">{a.label}</a></li>
+              ))}
               <li><a href="https://github.com/riboseinc/cla" class="text-slate-600 no-underline hover:text-ink hover:underline dark:text-slate-400 dark:hover:text-white" rel="noopener">Source repository</a></li>
             </ul>
           </nav>

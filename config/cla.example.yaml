@@ -47,14 +47,21 @@ identity:
 
 legal:
   editions:
+    # TWO editions, ONE current — the shape a real edition flip deploys
+    # (issue #123: 1.1 is drafted while 1.0 stays adopted). A non-current
+    # edition is still compiled and its text stays public forever, because
+    # a signature binds to the edition it was made against; only `current`
+    # makes a signature live.
     icla:
       current: "1.0"
       files:
         "1.0": legal/icla/1.0.md
+        "1.1": legal/icla/1.1.md
     ocla:
       current: "1.0"
       files:
         "1.0": legal/ocla/1.0.md
+        "1.1": legal/ocla/1.1.md
   # Clause-7 third-party declarations (issue #118): the SPDX ids Ribose
   # accepts. Counsel-owned instance data — the list below is ILLUSTRATIVE
   # for the example instance only. ABSENT = third-party declarations are
