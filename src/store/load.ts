@@ -1,6 +1,6 @@
 import type { Editions, IclaRecord, OclaRecord, PrVerdict, StoreSnapshot } from "@riboseinc/cla-kernel";
 import { evaluate } from "@riboseinc/cla-kernel";
-import { foldScheduleA, parseIcla, parseOcla, parseOclaMod, parseRevocation, parseAttribution, parseRole, parseLink, type OclaModRecord, type RoleRecord, type LinkRecord, type OclaFile } from "./records";
+import { foldScheduleA, parseIcla, parseOcla, parseOclaMod, parseRevocation, parseAttribution, parseRole, parseLink, parseEmail, type OclaModRecord, type RoleRecord, type LinkRecord, type EmailRecord, type OclaFile } from "./records";
 
 /**
  * The store leg: the data repo's record tree -> a kernel snapshot.
@@ -47,6 +47,8 @@ export type LoadedSnapshot = {
   roles: RoleRecord[];
   /** GitHub-handle <-> identity-subject bindings (staff resolution, issue #10). */
   links: LinkRecord[];
+  /** Verified commit emails (issue #115), live and deduped per binding. */
+  emails: EmailRecord[];
   /** ocla id -> PoC email (notify leg). */
   oclaPocs: Record<string, string | undefined>;
 };
@@ -60,6 +62,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
   const mods: OclaModRecord[] = [];
   const roles: RoleRecord[] = [];
   const links: LinkRecord[] = [];
+  const emails: EmailRecord[] = [];
   const revokedIds: string[] = [];
   const attributions: NonNullable<StoreSnapshot["attributions"]> = [];
   const thirdParties: NonNullable<StoreSnapshot["thirdParties"]> = [];
@@ -108,6 +111,9 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
     } else if (path.startsWith("link/")) {
       const r = parseLink(parsed);
       r ? links.push(r) : rejected.push({ path, reason: "invalid link" });
+    } else if (path.startsWith("email/")) {
+      const r = parseEmail(parsed);
+      r ? emails.push(r) : rejected.push({ path, reason: "invalid email verification" });
     } else if (path.startsWith("revocation/")) {
       const target = parseRevocation(parsed);
       target ? revokedIds.push(target) : rejected.push({ path, reason: "invalid revocation" });
@@ -124,7 +130,7 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
         ? thirdParties.push({ repo, pr, login, name })
         : rejected.push({ path, reason: "invalid third-party declaration" });
     }
-    // link/ and role/ are portal inputs, not kernel inputs
+    // role/ and link/ are portal inputs; email/ is folded into the snapshot.
   }
 
   const revoked = new Set(revokedIds);
@@ -137,6 +143,19 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
       covered: foldScheduleA(o.covered, modsByOcla.get(o.id) ?? []),
     }));
 
+  // Verified commit emails: revocation retires a binding; duplicates of
+  // the same (login, email) collapse latest-wins (the record list is
+  // path-sorted = creation order). Different logins claiming one address
+  // are NOT deduped away — the kernel reads that as an unresolved
+  // conflict and never guesses.
+  const norm = (s: string): string => s.trim().toLowerCase();
+  const liveEmails = new Map<string, EmailRecord>();
+  for (const e of emails) {
+    if (revoked.has(e.id)) continue;
+    liveEmails.set(`${norm(e.githubLogin)}\n${norm(e.email)}`, e);
+  }
+  const effectiveEmails = [...liveEmails.values()];
+
   return {
     snapshot: {
       iclas: iclas.filter((r) => !revoked.has(r.id)),
@@ -144,12 +163,14 @@ export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise
       revokedIds, // kernel re-checks; harmless, keeps the revocation fact visible
       attributions,
       thirdParties,
+      verifiedEmails: effectiveEmails.map((e) => ({ login: e.githubLogin, email: e.email })),
     },
     rejected,
     editionDivergences,
     mods,
     roles: roles.filter((r) => !revoked.has(r.id)),
     links: links.filter((l) => !revoked.has(l.id)),
+    emails: effectiveEmails,
     oclaPocs: Object.fromEntries(oclas.map((o) => [o.id, o.poc?.email ?? undefined])),
   };
 }

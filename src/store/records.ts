@@ -36,6 +36,21 @@ export type LinkRecord = {
   source: string;
 };
 
+/**
+ * A verified commit email (issue #115): one address the identity account
+ * proved through the portal's mail loop. The record is the legal proof
+ * that a git author email belongs to the login; coverage still comes
+ * from the login's signature. Append-only: revocation retires it.
+ */
+export type EmailRecord = {
+  id: string;
+  riboseSub: string;
+  githubLogin: string;
+  email: string;
+  verifiedAt: string;
+  source: string;
+};
+
 export type AttributionRecord = {
   id: string;
   repo: string;
@@ -182,6 +197,23 @@ export function parseLink(v: unknown): LinkRecord | undefined {
     githubLogin: login,
     githubId: ghId,
     linkedAt: str(v["linkedAt"]) ?? str(v["linked_at"]) ?? "",
+    source: str(v["source"]) ?? "unknown",
+  };
+}
+
+export function parseEmail(v: unknown): EmailRecord | undefined {
+  if (!isObj(v)) return undefined;
+  const id = str(v["id"]);
+  const riboseSub = str(v["riboseSub"]) ?? str(v["ribose_id_sub"]);
+  const login = str(v["githubLogin"]) ?? str(v["github_login"]);
+  const email = str(v["email"]);
+  if (!id || !riboseSub || !login || !email) return undefined;
+  return {
+    id,
+    riboseSub,
+    githubLogin: login,
+    email,
+    verifiedAt: str(v["verifiedAt"]) ?? str(v["verified_at"]) ?? "",
     source: str(v["source"]) ?? "unknown",
   };
 }

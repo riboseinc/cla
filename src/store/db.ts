@@ -86,6 +86,57 @@ export async function audit(db: D1Like | undefined, entry: { actor: string; acti
     .run();
 }
 
+// ---- commit-email verification challenges (issue #115) ----
+
+export type EmailChallenge = {
+  id: string;
+  tokenHash: string;
+  riboseSub: string;
+  login: string;
+  email: string;
+  createdAt: string;
+  expiresAt: string;
+  consumedAt?: string | null;
+};
+
+export async function createEmailChallenge(
+  db: D1Like,
+  data: { id: string; tokenHash: string; riboseSub: string; login: string; email: string; createdAt: string; expiresAt: string },
+): Promise<void> {
+  await db
+    .prepare("INSERT INTO email_challenges (id, token_hash, ribose_sub, login, email, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(data.id, data.tokenHash, data.riboseSub, data.login.toLowerCase(), data.email.toLowerCase(), data.createdAt, data.expiresAt)
+    .run();
+}
+
+/** The live (unconsumed, unexpired) challenge for a token hash. */
+export async function liveEmailChallenge(db: D1Like, tokenHash: string, nowIso: string): Promise<EmailChallenge | undefined> {
+  const row = await db
+    .prepare("SELECT * FROM email_challenges WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ? LIMIT 1")
+    .bind(tokenHash, nowIso)
+    .first<Record<string, unknown>>();
+  return row ? rowToEmailChallenge(row) : undefined;
+}
+
+/** One-time consume: false when another click already spent the link. */
+export async function consumeEmailChallenge(db: D1Like, id: string, at: string): Promise<boolean> {
+  const row = await db.prepare("SELECT id, consumed_at FROM email_challenges WHERE id = ? LIMIT 1").bind(id).first<{ id: string; consumed_at: string | null }>();
+  if (!row || row.consumed_at) return false;
+  await db.prepare("UPDATE email_challenges SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL").bind(at, id).run();
+  return true;
+}
+
+const rowToEmailChallenge = (r: Record<string, unknown>): EmailChallenge => ({
+  id: String(r["id"]),
+  tokenHash: String(r["token_hash"]),
+  riboseSub: String(r["ribose_sub"]),
+  login: String(r["login"]),
+  email: String(r["email"]),
+  createdAt: String(r["created_at"]),
+  expiresAt: String(r["expires_at"]),
+  consumedAt: (r["consumed_at"] as string) ?? null,
+});
+
 // ---- the write-back sweep queue (issue #59) ----
 
 export async function enqueueSweep(db: D1Like, login: string): Promise<void> {

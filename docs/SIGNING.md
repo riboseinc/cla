@@ -64,6 +64,24 @@ flowchart TD
 7. **See your record any time** at [cla.ribose.com/agreements](https://cla.ribose.com/agreements) —
    the edition you signed, its hash, and the exact text in a viewer.
 
+## Committing from another email address
+
+GitHub links a commit to your account only when the commit's git author
+email belongs to your account. If you commit from a machine configured
+with another address, the check cannot tell who you are.
+
+Two answers, in order of preference:
+
+1. **Link the address to GitHub** (Settings → Emails), configure git to
+   use it, and push again. Every commit then links automatically.
+2. **Verify the address in the portal.** At
+   [cla.ribose.com/agreements](https://cla.ribose.com/agreements), under
+   **Commit emails**, add the address. A one-time link is mailed to it;
+   opening that link in the same signed-in browser records the address.
+   Commits carrying it then count as yours — covered by the agreement
+   you already signed, with no second signature. An address is only
+   recorded after you prove you receive its mail.
+
 ## If your pull request is still blocked
 
 The check re-evaluates on the next push. If the check has not caught

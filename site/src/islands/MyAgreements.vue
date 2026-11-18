@@ -11,6 +11,7 @@ type OclaCov = {
   row: { githubLogin: string; email?: string | null } | undefined;
 };
 type ViewDoc = { title: string; sha256: string; text: string };
+type CommitEmail = { email: string; verifiedAt: string };
 
 const me = ref<Record<string, unknown> | null>(null);
 const denied = ref(false);
@@ -18,11 +19,50 @@ const unarmed = ref(false);
 const loading = ref(true);
 const viewing = ref<ViewDoc | null>(null);
 
+// The verification link lands back on this page with the outcome in the
+// query string (a redirect from /agreements/emails/verify).
+const linkOutcome = ref(new URLSearchParams(location.search).get("commit_email") ?? "");
+const newEmail = ref("");
+const emailBusy = ref(false);
+const emailError = ref("");
+const emailNotice = ref("");
+
 const iclas = () => (me.value?.iclaSignatures as IclaSig[]) ?? [];
 const oclas = () => (me.value?.oclaCoverages as OclaCov[]) ?? [];
 const separate = () => me.value?.separateAgreement === true;
 const attributions = () => (me.value?.attributions as Array<{ repo: string; pr: number; agreement: { kind: string } }>) ?? [];
+const commitEmails = () => (me.value?.commitEmails as CommitEmail[]) ?? [];
 const bound = () => (me.value?.bound as { github_login: string }) ?? { github_login: "" };
+
+const csrfToken = (): string => document.cookie.match(/cla_csrf=([^;]+)/)?.[1] ?? "";
+
+const requestCommitEmail = async () => {
+  emailError.value = "";
+  emailNotice.value = "";
+  const address = newEmail.value.trim();
+  if (!address) return;
+  emailBusy.value = true;
+  const res = await fetch("/api/agreements/emails", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ csrf: csrfToken(), email: address }).toString(),
+  });
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  emailBusy.value = false;
+  if (!res.ok) {
+    emailError.value = String(body["error"] ?? `The portal answered ${res.status}.`);
+    return;
+  }
+  if (body["alreadyVerified"]) {
+    emailNotice.value = `${address} is already verified for @${bound().github_login}.`;
+    newEmail.value = "";
+    return;
+  }
+  emailNotice.value = body["delivered"]
+    ? `Verification mail sent to ${address}. Open its link in this browser to finish.`
+    : `The request is recorded, but the mail could not be delivered (${String(body["reason"] ?? "transport unavailable")}). Retry shortly.`;
+  newEmail.value = "";
+};
 
 const onEscape = (e: KeyboardEvent) => {
   if (e.key === "Escape") viewing.value = null;
@@ -156,6 +196,50 @@ const hashOf = (e: Edition) => e.textSha256.slice(0, 16) + "…";
           </div>
         </li>
       </ul>
+    </section>
+
+    <!-- Verified commit emails -->
+    <section id="commit-emails" class="mt-8">
+      <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Commit emails</h2>
+      <div class="mt-3 rounded-sm border border-rule bg-white p-5 dark:bg-ink-2">
+        <p v-if="linkOutcome === 'verified'" class="mb-3 rounded-sm bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+          Address verified. Commits you make with it now count as yours — covered by the agreement you already signed.
+        </p>
+        <p v-else-if="linkOutcome === 'signin'" class="mb-3 rounded-sm bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+          Sign in first, then open the verification link again.
+        </p>
+        <p v-else-if="linkOutcome && linkOutcome !== 'verified'" class="mb-3 rounded-sm bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+          That verification link is invalid, expired, or already used. Add the address again to get a fresh one.
+        </p>
+
+        <p class="max-w-prose text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+          Commits carry the git author email. If you commit from a machine
+          whose address GitHub has not linked to your account, verify that
+          address here once: this check then treats those commits as
+          <span class="font-mono">@{{ bound().github_login }}</span>'s, with no
+          extra signature and no git changes. An address is only listed once
+          you have proved you receive its mail.
+        </p>
+
+        <ul v-if="commitEmails().length" class="mt-3 space-y-1">
+          <li v-for="e in commitEmails()" :key="e.email" class="font-mono text-xs text-slate-600 dark:text-slate-400">
+            {{ e.email }} — verified
+          </li>
+        </ul>
+        <p v-else class="mt-3 text-xs text-slate-500 dark:text-slate-400">No commit emails verified beyond your account's own address.</p>
+
+        <form class="mt-4 flex flex-wrap items-end gap-3" @submit.prevent="requestCommitEmail">
+          <label class="min-w-0 flex-1">
+            <span class="mb-1 block text-xs text-slate-500 dark:text-slate-400">Add a commit email</span>
+            <input v-model="newEmail" type="email" required placeholder="you@work.example" class="w-full rounded-sm border border-rule bg-paper px-3 py-2 font-mono text-sm text-ink dark:bg-ink dark:text-white" />
+          </label>
+          <button type="submit" :disabled="emailBusy" class="rounded-sm bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-400 disabled:opacity-50">
+            {{ emailBusy ? "Sending…" : "Send verification" }}
+          </button>
+        </form>
+        <p v-if="emailError" class="mt-2 text-xs text-red-700 dark:text-red-400">{{ emailError }}</p>
+        <p v-if="emailNotice" class="mt-2 text-xs text-slate-600 dark:text-slate-400">{{ emailNotice }}</p>
+      </div>
     </section>
 
     <!-- Attributions -->

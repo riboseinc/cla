@@ -47,7 +47,7 @@ export function checkRunBody(verdict: PrVerdict, portalBase: string, signingDocs
       lines.push(`- ${who(c)} — covered by multiple agreements; **specify under which one this PR is contributed**: ${links}`);
     } else {
       if (c.login === null && c.email) {
-        lines.push(`- ${who(c)} — the commit's author email is not linked to any GitHub account. Configure git to commit with an email verified under your GitHub account (Settings → Emails), then push again; if Ribose also requires a signed agreement from you: [sign the Individual CLA](${portalBase}/icla)${signingDocsUrl ? ` ([how to sign](${signingDocsUrl}))` : ""}`);
+        lines.push(`- ${who(c)} — the commit's author email is not linked to any GitHub account. Configure git to commit with an email verified under your GitHub account (Settings → Emails), then push again. Already covered under another account? Verify this address once as a [commit email](${portalBase}/agreements) — no re-signing. If Ribose also requires a signed agreement from you: [sign the Individual CLA](${portalBase}/icla)${signingDocsUrl ? ` ([how to sign](${signingDocsUrl}))` : ""}`);
       } else if (c.login === null) {
         lines.push(`- ${who(c)} — **not covered**: the commit carries no author email to identify, and no signed agreement exists for it: [sign the Individual CLA](${portalBase}/icla) and commit with your account's verified email`);
       } else {
@@ -127,7 +127,7 @@ export function commentBody(
         .join(" · ");
       rows.push(`| ${who(c)} | This pull request is covered by more than one agreement. Choose the one that applies: ${links}. |`);
     } else if (c.login === null && c.email) {
-      rows.push(`| ${who(c)} | Your commit's author email is not linked to any GitHub account. Configure git to commit with an email verified under your GitHub account (Settings → Emails), then push again. If Ribose also requires a signed agreement from you: [sign the Individual CLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""}. |`);
+      rows.push(`| ${who(c)} | Your commit's author email is not linked to any GitHub account. Configure git to commit with an email verified under your GitHub account (Settings → Emails), then push again. Already covered under another account? Verify this address once as a [commit email](${portalBase}/agreements) — no re-signing. If Ribose also requires a signed agreement from you: [sign the Individual CLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""}. |`);
     } else {
       const stale = c.login ? opts.staleEditions?.[c.login] : undefined;
       const what = stale

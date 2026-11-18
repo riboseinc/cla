@@ -40,7 +40,7 @@ export function csrfOk(header: string | undefined, formField: string | undefined
 /** Everything the signed-in person is party to (docs/design.md §4, "My agreements"). */
 export async function signerView(env: Env, fetcher: FetchLike, now: () => number, login: string) {
   const editions = kernelEditions(GENERATED_CONFIG);
-  const { snapshot, rejected } = await loadSnapshot(
+  const { snapshot, rejected, emails } = await loadSnapshot(
     { listRecords: makeListRecords(portalApi(env, fetcher, now), GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
     editions,
   );
@@ -57,6 +57,12 @@ export async function signerView(env: Env, fetcher: FetchLike, now: () => number
         current: o.edition.textSha256 === editions.ocla.textSha256,
         row: o.covered.find((row) => row.githubLogin.toLowerCase() === l),
       })),
+    // Addresses this login proved through the mail loop (issue #115):
+    // commits carrying them count as this login's, whatever machine
+    // produced them.
+    commitEmails: emails
+      .filter((e) => e.githubLogin.toLowerCase() === l)
+      .map((e) => ({ email: e.email, verifiedAt: e.verifiedAt })),
     attributions: (snapshot.attributions ?? []).filter((a) => a.login.toLowerCase() === l),
     rejectedCount: rejected.length,
     // A login the separate-agreement registry binds is covered outright

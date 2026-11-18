@@ -15,10 +15,11 @@ import { SESSION_COOKIE, CSRF_COOKIE, makeSessionCookie, readSessionCookie, make
 import { readAttributionToken, optionKey } from "./portal/attribution";
 import { readCompletionToken, parseAgreeCommand, parseThirdPartyCommand } from "./portal/completion";
 import { signEnrollmentToken, readEnrollmentToken } from "./portal/enroll";
+import { normalizeCommitEmail, emailChallengeHash, EMAIL_CHALLENGE_TTL_MS } from "./portal/emails";
 import { loadSnapshot } from "./store/load";
 import { makeListRecords } from "./store/github-store";
 import { kernelEditions } from "./config";
-import { d1, hasPendingRequest, requestJoin, pendingRequests, decideRequest, audit } from "./store/db";
+import { d1, hasPendingRequest, requestJoin, pendingRequests, decideRequest, audit, createEmailChallenge, liveEmailChallenge, consumeEmailChallenge } from "./store/db";
 import { verifyEvidence } from "./store/evidence";
 import { sha256Hex } from "./portal/oidc";
 import { sendMail, mailDeps } from "./notify/mail";
@@ -320,6 +321,99 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         email_verified: session.emailVerified === true,
         ...view,
       });
+    });
+
+    // ---- Verified commit emails (issue #115) ----
+    // A contributor commits from addresses GitHub cannot link to their
+    // account. The portal proves such an address with a one-time mail
+    // loop and records it in the data repo; enforcement then reads an
+    // unlinked commit carrying it as that login's commit. The signature
+    // stays the coverage — verification only says WHO the commit is.
+    app.post("/agreements/emails", async (c) => {
+      const session = await ses(c);
+      if (!session) return c.json({ error: "sign in required" }, 401);
+      const form = await c.req.parseBody();
+      if (!csrfOk(c.req.header("cookie"), form["csrf"] as string)) return c.json({ error: "csrf mismatch" }, 403);
+      const email = normalizeCommitEmail(String(form["email"] ?? ""));
+      if (!email) return c.json({ error: "a bare email address is required" }, 400);
+
+      const db = d1(env);
+      if (!db) return c.json({ error: "commit-email verification is unavailable (D1 unconfigured)" }, 503);
+
+      // Repeated request for an address already verified for this login:
+      // answer idempotently — no second record, no second mail.
+      const api = portalApi(env, fetcher, now);
+      const { emails } = await loadSnapshot(
+        { listRecords: makeListRecords(api, GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      const already = emails.some((e) => e.githubLogin.toLowerCase() === session.login.toLowerCase() && e.email.toLowerCase() === email);
+      if (already) return c.json({ requested: true, alreadyVerified: true });
+
+      const token = randomToken();
+      const issuedAt = new Date(now()).toISOString();
+      await createEmailChallenge(db, {
+        id: randomToken(),
+        tokenHash: await emailChallengeHash(token),
+        riboseSub: session.sub,
+        login: session.login,
+        email,
+        createdAt: issuedAt,
+        expiresAt: new Date(now() + EMAIL_CHALLENGE_TTL_MS).toISOString(),
+      });
+      const link = `${portalBase}/api/agreements/emails/verify?t=${encodeURIComponent(token)}`;
+      const mail = await sendMail(
+        mailDeps(env, GENERATED_CONFIG.coverage.notify.from, false, fetcher),
+        email,
+        "Verify your commit email for the Ribose CLA",
+        [
+          `A commit email was added to your Ribose CLA contributor account (@${session.login}).`,
+          ``,
+          `Verify that you can receive mail at ${email} by opening this one-time link (valid for 24 hours):`,
+          link,
+          ``,
+          `After verification, commits you make with ${email} count as your commits, covered by the agreement you already signed. If you did not ask for this, ignore this message.`,
+        ].join("\n"),
+      );
+      return c.json({ requested: true, delivered: mail.sent, reason: mail.reason ?? null });
+    });
+
+    // The mail link lands here. The session must still be the account that
+    // asked — otherwise a link could bind a victim's mailbox to another
+    // login (identity theft by phishing). One-time and expiring.
+    app.get("/agreements/emails/verify", async (c) => {
+      const token = c.req.query("t");
+      const session = await ses(c);
+      if (!session) return c.redirect(`${portalBase}/agreements?commit_email=signin`, 303);
+      const db = d1(env);
+      if (!db) return c.redirect(`${portalBase}/agreements?commit_email=unavailable`, 303);
+      const challenge = token ? await liveEmailChallenge(db, await emailChallengeHash(token), new Date(now()).toISOString()) : undefined;
+      if (!challenge || challenge.riboseSub !== session.sub) {
+        return c.redirect(`${portalBase}/agreements?commit_email=invalid`, 303);
+      }
+      if (!(await consumeEmailChallenge(db, challenge.id, new Date(now()).toISOString()))) {
+        return c.redirect(`${portalBase}/agreements?commit_email=invalid`, 303);
+      }
+
+      const api = portalApi(env, fetcher, now);
+      const { emails } = await loadSnapshot(
+        { listRecords: makeListRecords(api, GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo) },
+        kernelEditions(GENERATED_CONFIG),
+      );
+      const already = emails.some((e) => e.githubLogin.toLowerCase() === challenge.login.toLowerCase() && e.email.toLowerCase() === challenge.email.toLowerCase());
+      if (!already) {
+        await appendRecord({ api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "email", {
+          ribose_id_sub: challenge.riboseSub,
+          github_login: challenge.login,
+          email: challenge.email,
+          verified_at: new Date(now()).toISOString(),
+          source: "portal-email-loop",
+        });
+      }
+      // Open pull requests by this login may now read as covered even
+      // where the commit line itself stays unlinked: re-check them.
+      await enqueueSweepFor(env, [challenge.login]);
+      return c.redirect(`${portalBase}/agreements?commit_email=verified`, 303);
     });
 
     // The exact text of any edition ever deployed, hash-verified before

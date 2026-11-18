@@ -78,6 +78,11 @@ export type StoreSnapshot = {
    *  so the registry must also match on the email the contributor
    *  actually commits with. */
   msaEmails?: string[];
+  /** Verified commit emails (issue #115): an address the login proved
+   *  through the portal. An UNLINKED commit carrying one is that login's
+   *  commit; the normal coverage paths then decide — the verified email
+   *  is identity, never coverage by itself. */
+  verifiedEmails?: Array<{ login: string; email: string }>;
 };
 
 // ---- outputs ----
@@ -120,6 +125,16 @@ const oclaRef = (r: OclaRecord): AgreementRef => ({
   oclaId: r.id,
   orgSlug: r.orgSlug,
 });
+
+/** The login a verified commit email binds. Exactly one login may claim
+ *  an address; several claims are an unresolved identity conflict and
+ *  resolve to nobody — never guess whose commit it was. */
+function verifiedLoginForEmail(snap: StoreSnapshot, email: string): string | undefined {
+  const v = normalize(email);
+  const hits = (snap.verifiedEmails ?? []).filter((b) => normalize(b.email) === v);
+  const logins = new Set(hits.map((b) => normalize(b.login)));
+  return logins.size === 1 ? hits[0]!.login : undefined;
+}
 
 /** Collect every applicable human-path coverage for one identity string. */
 function collectPaths(
@@ -168,37 +183,46 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
   for (const c of pr.committers) {
     if (c.isBot) continue;
 
+    // Identity first: a linked commit carries its login; an UNLINKED one
+    // is that login's commit when its author email was verified through
+    // the portal (issue #115). The verified email only resolves WHO the
+    // commit belongs to — coverage still has to come from a signature.
+    const verifiedLogin = c.login === null && c.email ? verifiedLoginForEmail(snap, c.email) : undefined;
+    const identity = c.login ?? verifiedLogin ?? null;
+    /** The commit itself carried a GitHub login (not just a verified email). */
+    const byLogin = c.login !== null;
+
     // The registry IS the coverage: a login bound to a separate written
     // agreement with Ribose is covered outright — no ICLA click, and
     // the attribution never claims the ICLA (issue #85, owner model).
     // UNLINKED commits (author_login NULL) match by the git author
     // email — the identity the commit actually carries.
-    const registryByLogin = c.login !== null && (snap.msaLogins ?? []).map(normalize).includes(normalize(c.login));
+    const registryByLogin = identity !== null && (snap.msaLogins ?? []).map(normalize).includes(normalize(identity));
     const registryByEmail = c.email !== null && c.email !== undefined && (snap.msaEmails ?? []).map(normalize).includes(normalize(c.email));
     if (registryByLogin || registryByEmail) {
-      committers.push({ login: c.login, status: "covered", path: "separate-agreement", matchedBy: registryByLogin ? "login" : "email", underSeparateAgreement: true, ...(c.email && !registryByLogin ? { email: c.email } : {}) });
+      const byEmail = registryByLogin ? !byLogin : true;
+      committers.push({ login: identity, status: "covered", path: "separate-agreement", matchedBy: byEmail ? "email" : "login", underSeparateAgreement: true, ...(c.email && byEmail ? { email: c.email } : {}) });
       continue;
     }
 
     const allowlisted =
-      (c.login && (cfg.coverage.allowlist.global.map(normalize).includes(normalize(c.login)) ||
-        (cfg.coverage.allowlist.perOrg[pr.context.org] ?? []).map(normalize).includes(normalize(c.login)))) ?? false;
+      (identity && (cfg.coverage.allowlist.global.map(normalize).includes(normalize(identity)) ||
+        (cfg.coverage.allowlist.perOrg[pr.context.org] ?? []).map(normalize).includes(normalize(identity)))) ?? false;
     if (allowlisted) {
-      committers.push({ login: c.login, status: "covered", path: "allowlist", matchedBy: "login" });
+      committers.push({ login: identity, status: "covered", path: "allowlist", matchedBy: byLogin ? "login" : "email" });
       continue;
     }
 
     const paths: { path: "icla" | "ocla"; agreement?: AgreementRef }[] = [];
-    let matchedBy: "login" | "email" = "login";
-    let resolvedLogin: string | null = c.login;
+    let matchedBy: "login" | "email" = byLogin ? "login" : "email";
+    const resolvedLogin = identity;
 
-    if (c.login) {
-      paths.push(...collectPaths("login", c.login, snap, editions, revoked));
+    if (identity) {
+      paths.push(...collectPaths("login", identity, snap, editions, revoked));
     }
     if (paths.length === 0 && c.email) {
       paths.push(...collectPaths("email", c.email, snap, editions, revoked));
       matchedBy = "email";
-      resolvedLogin = c.login;
     }
 
     // The registry returned above: a login it binds never reaches here, so
