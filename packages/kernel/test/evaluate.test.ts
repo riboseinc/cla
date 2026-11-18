@@ -134,11 +134,66 @@ describe("kernel: OCLA Schedule A", () => {
   });
 });
 
+describe("kernel: the separate-agreement registry is the coverage (issue #100)", () => {
+  it("a registry login is covered outright — no records, no click", () => {
+    const v = evaluate(
+      pr([login("ribose-staff", "staff@ribose.example")]),
+      snapshot({ msaLogins: ["ribose-staff"], msaEmails: [] }),
+      config(),
+      EDITIONS,
+    );
+    expect(v.verdict).toBe("pass");
+    expect(v.committers[0]).toMatchObject({
+      login: "ribose-staff",
+      status: "covered",
+      path: "separate-agreement",
+      matchedBy: "login",
+      underSeparateAgreement: true,
+    });
+  });
+
+  it("an UNLINKED commit matches the registry by its git author email", () => {
+    const v = evaluate(
+      pr([{ login: null, email: "Contractor@Example.com" }]),
+      snapshot({ msaLogins: ["someone"], msaEmails: ["contractor@example.com"] }),
+      config(),
+      EDITIONS,
+    );
+    expect(v.committers[0]).toMatchObject({
+      status: "covered",
+      path: "separate-agreement",
+      matchedBy: "email",
+      underSeparateAgreement: true,
+    });
+  });
+
+  it("runs before the allowlist, and never leaks onto an ICLA path", () => {
+    const both = evaluate(
+      pr([login("both")]),
+      snapshot({ msaLogins: ["both"] }),
+      config({ allowlist: { global: ["both"], perOrg: {} } }),
+      EDITIONS,
+    );
+    expect(both.committers[0]).toMatchObject({ path: "separate-agreement" });
+
+    // A signer who is NOT on the registry keeps the ICLA attribution: the
+    // separate-agreement flag is the registry's alone.
+    const iclaOnly = evaluate(
+      pr([login("signer")]),
+      snapshot({ iclas: [icla({ githubLogin: "signer" })], msaLogins: ["someone-else"] }),
+      config(),
+      EDITIONS,
+    );
+    expect(iclaOnly.committers[0]).toMatchObject({ status: "covered", path: "icla" });
+    expect(iclaOnly.committers[0]).not.toHaveProperty("underSeparateAgreement");
+  });
+});
+
 describe("kernel: the signature is the coverage (owner decision 2026-11-14)", () => {
-  it("employment alone covers nobody — even a staff-role match must point at a signature", () => {
-    // The staff/employment path was removed: every human signature is
-    // clicked. No staffMap input exists anymore, so nothing can cover
-    // but an ICLA record or an OCLA roster row.
+  it("the kernel has no employment or staff path — only the registry, a signature, or the allowlist", () => {
+    // #100 retired the employment path for good: a staff/contractor login
+    // is covered by the static registry, never by a role lookup. Without a
+    // registry entry, an ICLA record, or an allowlist, the login is missing.
     const v = evaluate(pr([login("ronald-t")]), snapshot(), config(), EDITIONS);
     expect(v.committers[0]?.status).toBe("missing");
   });

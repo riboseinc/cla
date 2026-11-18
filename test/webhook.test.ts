@@ -507,7 +507,7 @@ describe("the separate-agreement registry (MSA)", () => {
     const verdict: PrVerdict = {
       verdict: "pass",
       committers: [
-        { login: "hassanakbar", status: "covered", path: "icla", agreement: { kind: "icla", version: "1.0" }, matchedBy: "login", underSeparateAgreement: true },
+        { login: "hassanakbar", status: "covered", path: "separate-agreement", matchedBy: "login", underSeparateAgreement: true },
       ],
       missing: [],
       mustSpecify: {},

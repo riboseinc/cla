@@ -176,7 +176,7 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
     const registryByLogin = c.login !== null && (snap.msaLogins ?? []).map(normalize).includes(normalize(c.login));
     const registryByEmail = c.email !== null && c.email !== undefined && (snap.msaEmails ?? []).map(normalize).includes(normalize(c.email));
     if (registryByLogin || registryByEmail) {
-      committers.push({ login: c.login, status: "covered", path: "separate-agreement", matchedBy: "login", underSeparateAgreement: true });
+      committers.push({ login: c.login, status: "covered", path: "separate-agreement", matchedBy: registryByLogin ? "login" : "email", underSeparateAgreement: true });
       continue;
     }
 
@@ -201,10 +201,11 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
       resolvedLogin = c.login;
     }
 
-    const separate = resolvedLogin ? (snap.msaLogins ?? []).map(normalize).includes(normalize(resolvedLogin)) : false;
+    // The registry returned above: a login it binds never reaches here, so
+    // an ICLA/OCLA path is never flagged as separate-agreement coverage.
     if (paths.length === 1) {
       const p = paths[0]!;
-      committers.push({ login: resolvedLogin, status: "covered", path: p.path, agreement: p.agreement, matchedBy, ...(separate ? { underSeparateAgreement: true } : {}) });
+      committers.push({ login: resolvedLogin, status: "covered", path: p.path, agreement: p.agreement, matchedBy });
     } else if (paths.length > 1) {
       const options = paths.map((p) => p.agreement!).filter(Boolean);
       // A stored election for THIS (repo, pr, login) resolves the ambiguity
@@ -219,7 +220,7 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
         : undefined;
       const match = chosen ? paths.find((p) => agreementKey(p.agreement!) === agreementKey(chosen.agreement)) : undefined;
       if (match) {
-        committers.push({ login: resolvedLogin, status: "covered", path: match.path, agreement: match.agreement, matchedBy, ...(separate ? { underSeparateAgreement: true } : {}) });
+        committers.push({ login: resolvedLogin, status: "covered", path: match.path, agreement: match.agreement, matchedBy });
       } else if (resolvedLogin) {
         committers.push({ login: resolvedLogin, status: "must-specify", options, matchedBy });
         mustSpecify[resolvedLogin] = options;
