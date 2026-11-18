@@ -3,7 +3,7 @@ import type { FetchLike } from "../github/api";
 import { evaluate } from "@riboseinc/cla-kernel";
 import type { AppConfig } from "../config";
 import { kernelEditions } from "../config";
-import { loadSnapshot } from "../store/load";
+import { loadSnapshot, oclaForSlug } from "../store/load";
 import { fetchPrCommitters, fetchPrStats, fetchPrHeadSha } from "../github/pulls";
 import type { GithubApi } from "../github/api";
 import { makeListRecords } from "../store/github-store";
@@ -102,13 +102,26 @@ export async function evaluatePullRequest(
   } else {
     // The stale-edition hint (issue #60): a committer whose signature
     // exists but predates the current edition reads WHY they are asked
-    // again, not just that they are.
+    // again, not just that they are. An organization agreement goes stale
+    // the same way (issue #123) — its Schedule A members are uncovered
+    // until the signatory re-executes, and telling them only "sign the
+    // ICLA" hides the reason and the real remedy.
     const staleEditions: Record<string, { signed: string; current: string }> = {};
+    const staleOclas: Record<string, { orgSlug: string; signed: string; current: string }> = {};
     for (const login of verdict.missing) {
       const stale = loaded.snapshot.iclas.find((r) => r.githubLogin.toLowerCase() === login.toLowerCase() && r.edition.textSha256 !== editions.icla.textSha256);
-      if (stale) staleEditions[login] = { signed: stale.edition.version, current: editions.icla.version };
+      if (stale) {
+        staleEditions[login] = { signed: stale.edition.version, current: editions.icla.version };
+        // A re-signable ICLA is the person's own action; it names the remedy.
+        continue;
+      }
+      // Creation order: the LAST superseded record covering the login is the newest.
+      const superseded = [...loaded.snapshot.oclas]
+        .reverse()
+        .find((o) => o.edition.textSha256 !== editions.ocla.textSha256 && o.covered.some((row) => row.githubLogin.toLowerCase() === login.toLowerCase()));
+      if (superseded) staleOclas[login] = { orgSlug: superseded.orgSlug, signed: superseded.edition.version, current: editions.ocla.version };
     }
-    await upsertComment(deps.api, args.installationId, full, args.prNumber, commentBody(verdict, portalBase, { attributionLinks, signingDocsUrl, staleEditions }));
+    await upsertComment(deps.api, args.installationId, full, args.prNumber, commentBody(verdict, portalBase, { attributionLinks, signingDocsUrl, staleEditions, staleOclas }));
   }
   return { handled: true, outcome: `verdict=${verdict.verdict} missing=${verdict.missing.length} specify=${Object.keys(verdict.mustSpecify).length} records=${loaded.snapshot.iclas.length}I/${loaded.snapshot.oclas.length}O editions=${editions.icla.textSha256.slice(0, 8)}/${editions.ocla.textSha256.slice(0, 8)}` };
 }
@@ -333,7 +346,7 @@ export async function handleAgreeCommand(
 
   // company election / join request
   const orgSlug = command.company.toLowerCase();
-  const ocla = snapshot.oclas.find((o) => o.orgSlug.toLowerCase() === orgSlug);
+  const ocla = oclaForSlug(snapshot.oclas, orgSlug, editions.ocla.textSha256);
   if (!ocla) {
     await postBotReply(api, args.installationId, full, args.prNumber, `@${commenter} no Organization CLA exists for "${command.company}". [See the organizations page](https://${deps.config.instance.portalHost}/organizations).`);
     return { replied: true, reason: "no such organization" };

@@ -92,6 +92,15 @@ async function remove(login: string) {
   <template v-else-if="data">
     <p class="mt-2 font-mono text-sm text-slate-500 dark:text-slate-400">{{ slug }}</p>
 
+    <!-- The edition flip's stranded state (issue #123): the instrument this
+         organization executed is no longer current, so Schedule A coverage
+         is paused until its signatory re-executes. Say so here, to the
+         person who can act, instead of only in pull-request comments. -->
+    <p v-if="data.org && (data.org as any).current === false" class="mt-4 rounded-sm border border-accent-600/40 bg-accent-600/10 px-4 py-3 text-sm text-accent-600 dark:text-accent-400" role="alert">
+      The Organization CLA this console administers was executed on v{{ (data.org as any).edition.version }}, and the current edition is newer. Schedule A coverage is paused (join requests are not accepted) until the organization's signatory re-executes it:
+      <a href="/sign-ocla" class="underline">execute the current Organization CLA</a>.
+    </p>
+
     <section class="mt-8">
       <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">pending join requests</h2>
       <ul class="mt-3 space-y-2">

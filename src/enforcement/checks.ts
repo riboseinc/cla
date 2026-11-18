@@ -110,6 +110,9 @@ export function commentBody(
     signingDocsUrl?: string;
     /** login -> the editions at play when the signer holds a stale signature */
     staleEditions?: Record<string, { signed: string; current: string }>;
+    /** login -> the organization agreement at play when the person is on
+     *  the Schedule A of a superseded OCLA (issue #123) */
+    staleOclas?: Record<string, { orgSlug: string; signed: string; current: string }>;
   } = {},
 ): string {
   const rows: string[] = [];
@@ -130,9 +133,12 @@ export function commentBody(
       rows.push(`| ${who(c)} | Your commit's author email is not linked to any GitHub account. Configure git to commit with an email verified under your GitHub account (Settings → Emails), then push again. Already covered under another account? Verify this address once as a [commit email](${portalBase}/agreements) — no re-signing. If Ribose also requires a signed agreement from you: [sign the Individual CLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""}. |`);
     } else {
       const stale = c.login ? opts.staleEditions?.[c.login] : undefined;
+      const supersededOrg = c.login ? opts.staleOclas?.[c.login] : undefined;
       const what = stale
         ? `You signed the Individual CLA v${stale.signed}, and the current edition is v${stale.current}; the text changed, so a re-sign is needed`
-        : "Ribose requires a signed agreement for every contribution";
+        : supersededOrg
+          ? `You are on the Schedule A of ${supersededOrg.orgSlug}'s Organization CLA v${supersededOrg.signed}, which the current edition v${supersededOrg.current} supersedes; the organization's signatory must re-execute it`
+          : "Ribose requires a signed agreement for every contribution";
       rows.push(`| ${who(c)} | ${what}. [Sign the Individual CLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""} or [find your organization](${portalBase}/organizations). |`);
     }
   }

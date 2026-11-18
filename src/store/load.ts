@@ -53,6 +53,25 @@ export type LoadedSnapshot = {
   oclaPocs: Record<string, string | undefined>;
 };
 
+/**
+ * The organization's OCLA that speaks for it now (issue #123): the record
+ * executed under the current edition, else the newest superseded record —
+ * the snapshot's order is creation order, so the last match is the latest.
+ *
+ * An edition flip leaves TWO records for one slug (the old instrument is
+ * append-only and never rewritten), and every slug lookup must pick the
+ * live one; with only a stale record the caller can still say "stale"
+ * instead of "no such organization".
+ */
+export function oclaForSlug<T extends { orgSlug: string; edition: { textSha256: string } }>(
+  oclas: readonly T[],
+  slug: string,
+  currentSha256: string,
+): T | undefined {
+  const matches = oclas.filter((o) => o.orgSlug.toLowerCase() === slug.toLowerCase());
+  return matches.find((o) => o.edition.textSha256 === currentSha256) ?? matches.at(-1);
+}
+
 export async function loadSnapshot(deps: StoreDeps, editions: Editions): Promise<LoadedSnapshot> {
   const { paths, read } = await deps.listRecords();
 

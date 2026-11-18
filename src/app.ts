@@ -16,7 +16,7 @@ import { readAttributionToken, optionKey } from "./portal/attribution";
 import { readCompletionToken, parseAgreeCommand, parseThirdPartyCommand } from "./portal/completion";
 import { signEnrollmentToken, readEnrollmentToken } from "./portal/enroll";
 import { normalizeCommitEmail, emailChallengeHash, EMAIL_CHALLENGE_TTL_MS } from "./portal/emails";
-import { loadSnapshot } from "./store/load";
+import { loadSnapshot, oclaForSlug } from "./store/load";
 import { makeListRecords } from "./store/github-store";
 import { kernelEditions } from "./config";
 import { d1, hasPendingRequest, requestJoin, pendingRequests, decideRequest, audit, createEmailChallenge, liveEmailChallenge, consumeEmailChallenge } from "./store/db";
@@ -609,12 +609,17 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         kernelEditions(GENERATED_CONFIG),
       );
       const slug = slugify(orgName);
-      if (snapshot.oclas.some((o) => o.orgSlug === slug)) {
-        return c.json({ error: `an organization with slug "${slug}" already exists — duplicates are merged by staff` }, 400);
+      const edition = editionText(GENERATED_CONFIG, "ocla", GENERATED_CONFIG.legal.current.ocla)!;
+      // A superseded OCLA is replaced by a NEW record on the current edition
+      // (issue #123): the old instrument is append-only and never rewritten.
+      // Only a live instrument for the slug makes this a duplicate — staff
+      // merges two live instruments; a re-execution is self-service.
+      const live = snapshot.oclas.find((o) => o.orgSlug === slug && o.edition.textSha256 === edition.sha256);
+      if (live) {
+        return c.json({ error: `an organization with slug "${slug}" already holds a live OCLA — duplicates are merged by staff` }, 400);
       }
 
       const oclaId = randomToken();
-      const edition = editionText(GENERATED_CONFIG, "ocla", GENERATED_CONFIG.legal.current.ocla)!;
       await appendRecord({ api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now }, "ocla", {
         id: oclaId,
         orgSlug: slug,
@@ -677,9 +682,10 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         kernelEditions(GENERATED_CONFIG),
       );
       const snapshot = loaded.snapshot;
-      const ocla = snapshot.oclas.find((o) => o.orgSlug === c.req.param("slug"));
+      const editions = kernelEditions(GENERATED_CONFIG);
+      const ocla = oclaForSlug(snapshot.oclas, c.req.param("slug"), editions.ocla.textSha256);
       if (!ocla) return c.json({ error: "no such organization" }, 404);
-      if (ocla.edition.textSha256 !== kernelEditions(GENERATED_CONFIG).ocla.textSha256) {
+      if (ocla.edition.textSha256 !== editions.ocla.textSha256) {
         return c.json({ error: "this organization's OCLA is stale (re-sign pending) — join requests are paused" }, 409);
       }
       if (await hasPendingRequest(db, ocla.id, session.login)) return c.json({ error: "you already have a pending request" }, 409);
@@ -713,9 +719,16 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         kernelEditions(GENERATED_CONFIG),
       );
       const { snapshot, roles } = loaded;
-      const ocla = snapshot.oclas.find((o) => o.orgSlug === c.req.param("slug"));
+      // Roles are on the ORGANIZATION, not on one instrument: a re-execution
+      // writes a new record with a new id (issue #123), and it must not lock
+      // the organization's existing admins out of their own console — grants
+      // never auto-terminate. The lookup itself still reads the live record.
+      const named = c.req.param("slug").toLowerCase();
+      const records = snapshot.oclas.filter((o) => o.orgSlug.toLowerCase() === named);
+      const ocla = oclaForSlug(records, named, kernelEditions(GENERATED_CONFIG).ocla.textSha256);
       if (!ocla) return { error: "no such organization" as const, status: 404 as const };
-      if (!roles.some((r) => r.oclaId === ocla.id && r.riboseSub === session.sub)) {
+      const admin = roles.some((r) => r.riboseSub === session.sub && records.some((o) => o.id === r.oclaId));
+      if (!admin) {
         return { error: "org admin role required" as const, status: 403 as const };
       }
       return { session, snapshot, roles, mods: loaded.mods, ocla };
@@ -770,7 +783,17 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         kernelEditions(GENERATED_CONFIG),
       );
       const mine = roles.filter((r) => r.riboseSub === session.sub).map((r) => r.oclaId);
-      return c.json({ organizations: snapshot.oclas.filter((o) => mine.includes(o.id)).map((o) => ({ slug: o.orgSlug })) });
+      // Same organization-level rule as adminOf: a slug the session holds a
+      // role for stays listed, shown by its LIVE record, across a
+      // re-execution (issue #123).
+      const editions = kernelEditions(GENERATED_CONFIG);
+      const slugs = [...new Set(snapshot.oclas.filter((o) => mine.includes(o.id)).map((o) => o.orgSlug))];
+      return c.json({
+        organizations: slugs
+          .map((slug) => oclaForSlug(snapshot.oclas, slug, editions.ocla.textSha256))
+          .filter((o): o is NonNullable<typeof o> => Boolean(o))
+          .map((o) => ({ slug: o.orgSlug })),
+      });
     });
 
     app.get("/admin-orgs/:slug", async (c) => {
@@ -779,7 +802,15 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       const db = d1(env);
       const pending = db ? await pendingRequests(db, auth.ocla.id) : [];
       return c.json({
-        org: { id: auth.ocla.id, slug: auth.ocla.orgSlug, edition: auth.ocla.edition },
+        org: {
+          id: auth.ocla.id,
+          slug: auth.ocla.orgSlug,
+          edition: auth.ocla.edition,
+          // The console's own stranded-state signal (issue #123): after an
+          // edition flip the organization's coverage is dead until its
+          // signatory re-executes, and the PoC is the actor who must act.
+          current: auth.ocla.edition.textSha256 === kernelEditions(GENERATED_CONFIG).ocla.textSha256,
+        },
         effectiveScheduleA: auth.ocla.covered,
         mods: auth.mods.filter((m) => m.oclaId === auth.ocla.id),
         pendingJoinRequests: pending,
