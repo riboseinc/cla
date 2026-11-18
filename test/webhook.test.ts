@@ -550,8 +550,12 @@ describe("registry email fallback (unlinked commits)", () => {
     const { body, headers } = await signedBody(WEBHOOK_SECRET, pullRequestPayload());
     await app.request("/api/github/webhook", { method: "POST", body, headers });
     const check = fx.calls.find((c) => c.method === "POST" && c.url.endsWith("/repos/rnpgp/rnp/check-runs"));
+    // #113: the teaching row names the email it cannot resolve, and the
+    // check fails — an unknown email buys no coverage.
+    expect((check!.body as Record<string, unknown>)["conclusion"]).toBe("failure");
     expect((check!.body as Record<string, unknown>)["output"]).toMatchObject({
-      summary: expect.stringContaining("not covered"),
+      summary: expect.stringContaining("author email unknown@nowhere.example — the commit's author email is not linked to any GitHub account"),
     });
+    expect(JSON.stringify((check!.body as Record<string, unknown>)["output"])).not.toContain("(unlinked)");
   });
 });
