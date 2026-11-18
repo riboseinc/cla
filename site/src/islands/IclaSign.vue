@@ -162,20 +162,15 @@ function observePaperEnd(): void {
         <template v-else>
           <div class="space-y-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
             <div class="rounded-sm border border-rule bg-white dark:bg-ink-2 p-4 text-ink dark:text-white">
-              <p class="font-medium">The effect of signature depends on Your standing:</p>
+              <p class="font-medium">What signing does:</p>
               <p class="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                If You are Ribose staff, or a party to an existing contractor or service agreement
-                with Ribose, signing establishes solely the association between Your GitHub account
-                and this CLA system; it creates no additional claims and does not modify, supersede,
-                or otherwise affect any rights or obligations arising under any such existing agreement.
+                Signing constitutes Your acceptance of this Agreement and grants the licenses set
+                forth in its text, shown in full on this page. One signature covers Your
+                contributions to all Ribose organizations on GitHub.
               </p>
               <p class="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                For any other Contributor, signing constitutes Your acceptance of this Agreement and
-                grants the licenses set forth in its text, shown in full on this page.
-              </p>
-              <p class="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                In either case, one signature covers Your contributions to all Ribose organizations
-                on GitHub.
+                You do not need this page if Ribose already holds an agreement with You: staff and
+                contractors are covered by that agreement, and the CLA process does not apply.
               </p>
             </div>
             <p>
@@ -310,11 +305,9 @@ function observePaperEnd(): void {
           projects — edition {{ edition?.version }}.
         </p>
         <p class="border-t border-rule pt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-          If You are Ribose staff, or a party to an existing contractor or service
-          agreement with Ribose, this signature establishes solely the association
-          between Your GitHub account and this CLA system; it creates no additional
-          claims and does not modify, supersede, or otherwise affect any rights or
-          obligations arising under any such existing agreement.
+          Staff and contractors of Ribose do not sign here: an existing Ribose
+          agreement already covers their contributions, and the CLA process
+          does not apply to them.
         </p>
 
 

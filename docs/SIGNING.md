@@ -1,10 +1,16 @@
 # How to sign the Ribose CLA
 
-Every contributor to a Ribose GitHub organization signs the
+Every external contributor to a Ribose GitHub organization signs the
 Individual Contributor License Agreement (ICLA) once. One signature
 covers your contributions to all Ribose organizations on GitHub. This
 document describes the signing flow; the enforcement App tells you on
 a pull request when a signature is needed and links here.
+
+You do not sign if Ribose already holds an agreement with you — staff
+and contractors are covered by that agreement, the CLA process does not
+apply, and the App and the portal never ask you for a signature. If you
+are in doubt, the App's statement on your pull request says which case
+applies to you.
 
 ## The signing flow
 

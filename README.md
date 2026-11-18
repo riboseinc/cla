@@ -27,12 +27,15 @@ code edit.
 - Multi-agreement contributors **specify per PR** under which agreement
   a contribution is made; after merge the App posts which CLA the
   contribution was made under.
-- **Everyone signs**: employment or a service agreement does not by
-  itself cover a contribution. Ribose staff and contractors sign the
-  same ICLA as any other contributor; where an existing agreement
-  governs, the signature records only the GitHub-account association.
-  An OCLA Schedule A is the alternative for employees of an
-  organization that has executed one.
+- **The signature is the coverage**: an external contributor is covered
+  by a signature — the ICLA, or a row on an organization's OCLA Schedule
+  A — and employment or a service agreement alone covers nobody.
+  Contributors bound to Ribose by a separate written agreement are the
+  exception, and the instance keeps their logins in static config
+  (`separate_agreement`): that registry **is** their coverage. They never
+  sign, are never asked to, and their merged work is attributed only as
+  "submitted under an existing Ribose agreement; the CLA process does not
+  apply" — the instrument and any classification stay private.
 
 ## The four-repo architecture
 
