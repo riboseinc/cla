@@ -30,11 +30,16 @@ instance:
       example-contractor:
         - contractor@example.com
   # The internal roster census: static as well; the view adds live state.
+  # A member may also be on the separate-agreement registry — the two lists
+  # overlap by design, and the registry is what makes the person covered.
   roster:
     members:
       - login: example-member
         role: staff
         name: Example Member
+      - login: example-staff
+        role: staff
+        name: Example Staff
 
 identity:
   issuer: https://id.example.org

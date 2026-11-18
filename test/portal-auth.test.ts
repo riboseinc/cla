@@ -225,3 +225,22 @@ describe("DER posture", () => {
     expect(derSignatureToRawEs256(raw)).toBeNull(); // raw in, null out (already raw)
   });
 });
+
+describe("the separate-agreement registry never asks for a click (issue #100)", () => {
+  it("a registry login reads as covered by an existing agreement; other logins keep the sign-up prompt", async () => {
+    const pem = await makeKeyPem();
+    const fx = makeFixture();
+    const app = createApp(ENV(pem), { fetcher: fx.fetcher });
+    const view = async (login: string) => {
+      const session = await makeSessionCookie("op-secret", { sub: "s", login, githubId: 1 }, Date.now());
+      const res = await app.request("/agreements", { headers: { cookie: `${SESSION_COOKIE}=${session}` } });
+      expect(res.status).toBe(200);
+      return (await res.json()) as Record<string, unknown>;
+    };
+
+    // `example-staff` is compiled from the example registry: no record, no
+    // signature, and the portal must say the CLA process does not apply.
+    expect(await view("example-staff")).toMatchObject({ separateAgreement: true, iclaSignatures: [] });
+    expect(await view("never-registered")).toMatchObject({ separateAgreement: false });
+  });
+});

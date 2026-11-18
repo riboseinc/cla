@@ -20,6 +20,7 @@ const viewing = ref<ViewDoc | null>(null);
 
 const iclas = () => (me.value?.iclaSignatures as IclaSig[]) ?? [];
 const oclas = () => (me.value?.oclaCoverages as OclaCov[]) ?? [];
+const separate = () => me.value?.separateAgreement === true;
 const attributions = () => (me.value?.attributions as Array<{ repo: string; pr: number; agreement: { kind: string } }>) ?? [];
 const bound = () => (me.value?.bound as { github_login: string }) ?? { github_login: "" };
 
@@ -91,12 +92,18 @@ const hashOf = (e: Edition) => e.textSha256.slice(0, 16) + "…";
     <section class="mt-8">
       <h2 class="font-mono text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Individual Contributor License Agreement</h2>
       <div v-if="iclas().length === 0" class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-sm border border-rule bg-white p-5 dark:bg-ink-2">
-        <p class="max-w-prose text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-          No Individual Contributor License Agreement is recorded for this
-          handle. Contributions to Ribose organizations stay blocked until
-          one is on record.
+        <p v-if="separate()" class="max-w-prose text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+          Your contributions are covered by an existing Ribose agreement: the
+          CLA process does not apply, and no signature is requested.
         </p>
-        <a href="/icla" class="shrink-0 rounded-sm bg-brand-500 px-4 py-2 text-sm font-medium text-white no-underline hover:bg-brand-400">Sign the ICLA</a>
+        <template v-else>
+          <p class="max-w-prose text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+            No Individual Contributor License Agreement is recorded for this
+            handle. Contributions to Ribose organizations stay blocked until
+            one is on record.
+          </p>
+          <a href="/icla" class="shrink-0 rounded-sm bg-brand-500 px-4 py-2 text-sm font-medium text-white no-underline hover:bg-brand-400">Sign the ICLA</a>
+        </template>
       </div>
       <ul v-else class="mt-3 space-y-3">
         <li v-for="s in iclas()" :key="s.edition.version + s.edition.textSha256" class="rounded-sm border border-rule bg-white p-5 dark:bg-ink-2">
@@ -115,7 +122,7 @@ const hashOf = (e: Edition) => e.textSha256.slice(0, 16) + "…";
             </p>
             <div class="flex items-center gap-3">
               <button class="text-xs text-brand-600 underline underline-offset-2 dark:text-brand-400" @click="viewText('Individual Contributor License Agreement', 'icla', s.edition.version)">View the exact text</button>
-              <a v-if="!s.current" href="/icla" class="rounded-sm bg-brand-500 px-3 py-1.5 text-xs font-medium text-white no-underline hover:bg-brand-400">Re-sign</a>
+              <a v-if="!s.current && !separate()" href="/icla" class="rounded-sm bg-brand-500 px-3 py-1.5 text-xs font-medium text-white no-underline hover:bg-brand-400">Re-sign</a>
             </div>
           </div>
         </li>

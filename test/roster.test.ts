@@ -5,8 +5,9 @@ import { makeFixture, makeKeyPem, type Fixture } from "./helpers";
 
 /**
  * The Ribose internal roster (issue #62): a manager-gated live view of
- * the estate's own people. A management grouping only — it never
- * grants coverage; every human still signs like any contributor.
+ * the estate's own people. A management grouping only — the roster grants
+ * nothing; a member on the separate-agreement registry is covered by that
+ * agreement (issue #100), and everyone else signs like any contributor.
  */
 
 let pem: string;
@@ -47,6 +48,17 @@ describe("the internal roster (issue #62)", () => {
     const body = (await res.json()) as { managers: string[]; members: unknown[] };
     expect(body.managers).toContain(MANAGER);
     expect(Array.isArray(body.members)).toBe(true);
+  });
+
+  it("a registry member is covered by the existing agreement, never outstanding (issue #100)", async () => {
+    const a = app();
+    const res = await a.request("/roster", { headers: await authed(MANAGER) });
+    const body = (await res.json()) as { members: Array<{ login: string; state: string; covered: boolean }> };
+    // The example config lists `example-staff` in BOTH the roster and the
+    // separate-agreement registry: the registry is the coverage, so the
+    // management view must not read them outstanding.
+    const member = body.members.find((m) => m.login === "example-staff");
+    expect(member).toMatchObject({ state: "separate-agreement", covered: true });
   });
 
   it("membership changes are deliberate config PRs: the runtime has no roster write surface", async () => {

@@ -641,16 +641,22 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         kernelEditions(GENERATED_CONFIG),
       );
       const currentSha = kernelEditions(GENERATED_CONFIG).icla.textSha256;
+      // The registry is static config and it IS coverage (issue #100): a
+      // roster member bound to an existing Ribose agreement is never
+      // expected to sign, so the view must not read them outstanding.
+      const registry = (GENERATED_CONFIG.instance.separateAgreement?.logins ?? []).map((l) => l.toLowerCase());
       const members = (GENERATED_CONFIG.roster?.members ?? []).map((m) => {
         const login = m.login.toLowerCase();
         const linked = loaded.links.some((l) => l.githubLogin.toLowerCase() === login);
         const signedIcla = loaded.snapshot.iclas.filter((r) => r.githubLogin.toLowerCase() === login).sort((a, b) => (a.edition.textSha256 === currentSha ? -1 : b.edition.textSha256 === currentSha ? 1 : 0))[0];
-        const state = signedIcla
-          ? signedIcla.edition.textSha256 === currentSha
-            ? "signed"
-            : "stale"
-          : "outstanding";
-        return { ...m, login, linked, signed: state !== "outstanding", state, edition: signedIcla?.edition.version ?? null };
+        const state = registry.includes(login)
+          ? "separate-agreement"
+          : signedIcla
+            ? signedIcla.edition.textSha256 === currentSha
+              ? "signed"
+              : "stale"
+            : "outstanding";
+        return { ...m, login, linked, covered: state !== "outstanding", state, edition: signedIcla?.edition.version ?? null };
       });
       return c.json({
         managers: GENERATED_CONFIG.instance.rosterManagers ?? [],

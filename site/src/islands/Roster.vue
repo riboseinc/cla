@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /** The Ribose internal roster (issue #62): a management view of the
- *  estate's own people — linked? signed? which edition? outstanding?
- *  A management grouping only; it never grants coverage. */
+ *  estate's own people — linked? covered? which edition? outstanding?
+ *  A management grouping only; the registry is the coverage (issue #100). */
 import { onMounted, ref } from "vue";
 
-type Member = { login: string; role: string; name: string; linked: boolean; signed: boolean; state: string; edition: string | null };
+type Member = { login: string; role: string; name: string; linked: boolean; covered: boolean; state: string; edition: string | null };
 const denied = ref(false);
 const loading = ref(true);
 const managers = ref<string[]>([]);
@@ -45,9 +45,9 @@ onMounted(load);
     <h1 class="font-serif text-2xl font-semibold">The Ribose roster</h1>
     <p class="mt-2 max-w-prose text-sm leading-relaxed text-slate-500 dark:text-slate-400">
       The live state of every member of the internal roster: whether the
-      GitHub handle is linked to a Ribose ID account, whether a current
-      Individual CLA is on record, and which edition it carries. The
-      roster manages and displays; it never grants coverage.
+      GitHub handle is linked to a Ribose ID account, and how the handle is
+      covered — a current Individual CLA, or a separate agreement with
+      Ribose that makes the CLA process inapplicable.
     </p>
 
     <div class="mt-6 overflow-hidden rounded-sm border border-rule bg-white dark:bg-ink-2">
@@ -57,7 +57,7 @@ onMounted(load);
             <th class="px-4 py-3">Member</th>
             <th class="px-4 py-3">Role</th>
             <th class="px-4 py-3">Linked</th>
-            <th class="px-4 py-3">ICLA</th>
+            <th class="px-4 py-3">Coverage</th>
           </tr>
         </thead>
         <tbody>
@@ -69,6 +69,7 @@ onMounted(load);
             </td>
             <td class="px-4 py-3">
               <span v-if="m.state === 'signed'" class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">signed v{{ m.edition }}</span>
+              <span v-else-if="m.state === 'separate-agreement'" class="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">covered — existing agreement</span>
               <span v-else-if="m.state === 'stale'" class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">stale — re-sign needed</span>
               <span v-else class="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">outstanding</span>
             </td>

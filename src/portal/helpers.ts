@@ -59,6 +59,10 @@ export async function signerView(env: Env, fetcher: FetchLike, now: () => number
       })),
     attributions: (snapshot.attributions ?? []).filter((a) => a.login.toLowerCase() === l),
     rejectedCount: rejected.length,
+    // A login the separate-agreement registry binds is covered outright
+    // (issue #100): the portal must never ask them to sign, so the view
+    // says so instead of showing the sign-up prompt.
+    separateAgreement: (GENERATED_CONFIG.instance.separateAgreement?.logins ?? []).some((x) => x.toLowerCase() === l),
   };
 }
 
