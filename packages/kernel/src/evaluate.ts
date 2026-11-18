@@ -87,7 +87,7 @@ export type AgreementRef =
   | { kind: "ocla"; version: string; oclaId: string; orgSlug: string };
 
 export type CommitterVerdict =
-  | { login: string | null; status: "covered"; path: "allowlist" | "icla" | "ocla" | "separate-agreement"; agreement?: AgreementRef; matchedBy: "login" | "email"; underSeparateAgreement?: boolean }
+  | { login: string | null; status: "covered"; path: "allowlist" | "icla" | "ocla" | "separate-agreement"; agreement?: AgreementRef; matchedBy: "login" | "email"; underSeparateAgreement?: boolean; email?: string | null }
   | { login: string | null; status: "must-specify"; options: AgreementRef[]; matchedBy: "login" | "email" }
   | { login: string | null; status: "missing"; email?: string | null };
 
@@ -176,7 +176,7 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
     const registryByLogin = c.login !== null && (snap.msaLogins ?? []).map(normalize).includes(normalize(c.login));
     const registryByEmail = c.email !== null && c.email !== undefined && (snap.msaEmails ?? []).map(normalize).includes(normalize(c.email));
     if (registryByLogin || registryByEmail) {
-      committers.push({ login: c.login, status: "covered", path: "separate-agreement", matchedBy: registryByLogin ? "login" : "email", underSeparateAgreement: true });
+      committers.push({ login: c.login, status: "covered", path: "separate-agreement", matchedBy: registryByLogin ? "login" : "email", underSeparateAgreement: true, ...(c.email && !registryByLogin ? { email: c.email } : {}) });
       continue;
     }
 

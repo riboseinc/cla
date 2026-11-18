@@ -16,6 +16,9 @@ export function conclusionFor(verdict: PrVerdict): "success" | "failure" | "acti
   return Object.keys(verdict.mustSpecify).length > 0 ? "action_required" : "success";
 }
 
+const who = (c: { login: string | null; email?: string | null }): string =>
+  c.login ? `@${c.login}` : c.email ? `author email ${c.email}` : "an unlinked commit with no author email";
+
 export function checkRunBody(verdict: PrVerdict, portalBase: string, signingDocsUrl?: string): Record<string, unknown> {
   // The proportionality control fired: the honest, visible disclosure —
   // the check passes because the change is under the thresholds, never
@@ -37,16 +40,18 @@ export function checkRunBody(verdict: PrVerdict, portalBase: string, signingDocs
       const via = c.underSeparateAgreement
         ? "**an existing Ribose agreement**"
         : `**${c.path}**${c.agreement && "orgSlug" in c.agreement ? ` (${c.agreement.orgSlug} OCLA)` : ""}`;
-      const who = c.login === null ? "(unlinked)" : `@${c.login}`;
+      const who = c.login === null ? (c.email ? `author email ${c.email}` : "an author email that matches no GitHub account") : `@${c.login}`;
       lines.push(`- ${who} — covered via ${via}`);
     } else if (c.status === "must-specify") {
       const links = c.options.map((o) => (o.kind === "icla" ? "[Individual CLA]" : `[${o.orgSlug} OCLA]`)).join(" ");
-      lines.push(`- @${c.login ?? "(unlinked)"} — covered by multiple agreements; **specify under which one this PR is contributed**: ${links}`);
+      lines.push(`- ${who(c)} — covered by multiple agreements; **specify under which one this PR is contributed**: ${links}`);
     } else {
       if (c.login === null && c.email) {
-        lines.push(`- (unlinked, ${c.email}) — the commit's author email is not linked to any GitHub account. Configure git to commit with an email verified under your GitHub account (Settings → Emails), then push again; if Ribose also requires a signed agreement from you: [sign the Individual CLA](${portalBase}/icla)${signingDocsUrl ? ` ([how to sign](${signingDocsUrl}))` : ""}`);
+        lines.push(`- ${who(c)} — the commit's author email is not linked to any GitHub account. Configure git to commit with an email verified under your GitHub account (Settings → Emails), then push again; if Ribose also requires a signed agreement from you: [sign the Individual CLA](${portalBase}/icla)${signingDocsUrl ? ` ([how to sign](${signingDocsUrl}))` : ""}`);
+      } else if (c.login === null) {
+        lines.push(`- ${who(c)} — **not covered**: the commit carries no author email to identify, and no signed agreement exists for it: [sign the Individual CLA](${portalBase}/icla) and commit with your account's verified email`);
       } else {
-        lines.push(`- @${c.login ?? "(unlinked)"} — **not covered**: [sign the Individual CLA](${portalBase}/icla)${signingDocsUrl ? ` ([how to sign](${signingDocsUrl}))` : ""} or [join your organization's OCLA](${portalBase}/organizations)`);
+        lines.push(`- @${c.login} — **not covered**: [sign the Individual CLA](${portalBase}/icla)${signingDocsUrl ? ` ([how to sign](${signingDocsUrl}))` : ""} or [join your organization's OCLA](${portalBase}/organizations)`);
       }
     }
   }
@@ -90,23 +95,22 @@ export function commentBody(
       // Allowlist rows stay in the check summary; the conversation
       // comment omits them — they are noise for humans.
       if (c.path === "allowlist") continue;
-      const who = c.login === null ? "(unlinked)" : `@${c.login}`;
       rows.push(c.underSeparateAgreement
-        ? `| ${who} | this work is submitted under an existing Ribose agreement; the CLA process does not apply. |`
-        : `| ${who} | covered (${c.path}${c.agreement && "orgSlug" in c.agreement ? ` — ${c.agreement.orgSlug}` : ""}) |`);
+        ? `| ${who(c)} | this work is submitted under an existing Ribose agreement; the CLA process does not apply. |`
+        : `| ${who(c)} | covered (${c.path}${c.agreement && "orgSlug" in c.agreement ? ` — ${c.agreement.orgSlug}` : ""}) |`);
     } else if (c.status === "must-specify") {
       const links = (opts.attributionLinks?.[c.login ?? ""] ?? c.options.map((o) => ({ label: o.kind === "icla" ? `Individual CLA v${o.version}` : `${o.orgSlug} OCLA v${o.version}`, url: `${portalBase}/agreements` })))
         .map((l) => `[${l.label}](${l.url})`)
         .join(" · ");
-      rows.push(`| @${c.login ?? "(unlinked)"} | This pull request is covered by more than one agreement. Choose the one that applies: ${links}. |`);
+      rows.push(`| ${who(c)} | This pull request is covered by more than one agreement. Choose the one that applies: ${links}. |`);
     } else if (c.login === null && c.email) {
-      rows.push(`| (unlinked) | Your commit carries the author email \`${c.email}\`, which is not linked to any GitHub account. Configure git to commit with an email verified under your GitHub account (Settings → Emails), then push again. If Ribose also requires a signed agreement from you: [sign the Individual CLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""}. |`);
+      rows.push(`| ${who(c)} | Your commit's author email is not linked to any GitHub account. Configure git to commit with an email verified under your GitHub account (Settings → Emails), then push again. If Ribose also requires a signed agreement from you: [sign the Individual CLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""}. |`);
     } else {
       const stale = c.login ? opts.staleEditions?.[c.login] : undefined;
       const what = stale
         ? `You signed the Individual CLA v${stale.signed}, and the current edition is v${stale.current}; the text changed, so a re-sign is needed`
         : "Ribose requires a signed agreement for every contribution";
-      rows.push(`| @${c.login ?? "(unlinked)"} | ${what}. [Sign the Individual CLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""} or [find your organization](${portalBase}/organizations). |`);
+      rows.push(`| ${who(c)} | ${what}. [Sign the Individual CLA](${portalBase}/icla)${opts.signingDocsUrl ? ` ([how to sign](${opts.signingDocsUrl}))` : ""} or [find your organization](${portalBase}/organizations). |`);
     }
   }
   const headline =
@@ -154,7 +158,7 @@ export function closingComment(verdict: PrVerdict, elected: Record<string, Agree
       // The separate-agreement sentence carries its own shape: it reads
       // as a sentence, not as a "contributed under X" fragment.
       if (c.underSeparateAgreement) {
-        return `- @${c.login ?? "(unlinked)"} — this work is submitted under an existing Ribose agreement; the CLA process does not apply.`;
+        return `- ${who(c)} — this work is submitted under an existing Ribose agreement; the CLA process does not apply.`;
       }
       const under =
         c.path === "allowlist"
@@ -162,10 +166,10 @@ export function closingComment(verdict: PrVerdict, elected: Record<string, Agree
           : c.agreement && "orgSlug" in c.agreement
             ? `the ${c.agreement.orgSlug} OCLA v${c.agreement.version}`
             : `the Individual CLA v${(c.agreement as { version: string }).version}`;
-      return `- @${c.login ?? "(unlinked)"} — contributed under **${under}**`;
+      return `- ${who(c)} — contributed under **${under}**`;
     }
-    if (c.status === "must-specify") return `- @${c.login ?? "(unlinked)"} — contributed under an election recorded during review`;
-    return `- @${c.login ?? "(unlinked)"} — **merged without CLA coverage** (visible in history)`;
+    if (c.status === "must-specify") return `- ${who(c)} — contributed under an election recorded during review`;
+    return `- ${who(c)} — **merged without CLA coverage** (visible in history)`;
   });
   const behalf = onBehalf ? ["", `- Contributed on behalf of a third party: **${onBehalf}** (declared under the Agreement's third-party clause)`] : [];
   return [CLOSING_MARKER, "**CLA attribution for this merged contribution**", ...rows, ...lines, ...behalf].join("\n");
