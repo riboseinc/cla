@@ -205,7 +205,7 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
     // an ICLA/OCLA path is never flagged as separate-agreement coverage.
     if (paths.length === 1) {
       const p = paths[0]!;
-      committers.push({ login: resolvedLogin, status: "covered", path: p.path, agreement: p.agreement, matchedBy });
+      committers.push({ login: resolvedLogin, status: "covered", path: p.path, agreement: p.agreement, matchedBy, ...(c.email && matchedBy === "email" ? { email: c.email } : {}) });
     } else if (paths.length > 1) {
       const options = paths.map((p) => p.agreement!).filter(Boolean);
       // A stored election for THIS (repo, pr, login) resolves the ambiguity
@@ -220,18 +220,18 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
         : undefined;
       const match = chosen ? paths.find((p) => agreementKey(p.agreement!) === agreementKey(chosen.agreement)) : undefined;
       if (match) {
-        committers.push({ login: resolvedLogin, status: "covered", path: match.path, agreement: match.agreement, matchedBy });
+        committers.push({ login: resolvedLogin, status: "covered", path: match.path, agreement: match.agreement, matchedBy, ...(c.email && matchedBy === "email" ? { email: c.email } : {}) });
       } else if (resolvedLogin) {
         committers.push({ login: resolvedLogin, status: "must-specify", options, matchedBy });
         mustSpecify[resolvedLogin] = options;
       } else {
         // Two agreements match an unlinked committer: there is no login to
         // ask, so review cannot resolve it — fail closed instead of passing.
-        committers.push({ login: null, status: "missing" });
+        committers.push({ login: null, status: "missing", ...(c.email ? { email: c.email } : {}) });
         missing.push(c.email ? `email:${c.email}` : "unlinked");
       }
     } else {
-      committers.push({ login: resolvedLogin, status: "missing" });
+      committers.push({ login: resolvedLogin, status: "missing", ...(c.email && !resolvedLogin ? { email: c.email } : {}) });
       // An email-only committer is still a committer: GitHub could not link
       // the commit to an account, and that must fail closed — the verdict is
       // derived from `missing`, so a null login must not drop out of it.
