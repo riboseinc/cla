@@ -99,6 +99,9 @@ coverage:
   minimal_change:
     files: 3
     code_lines: 10
+  # Option B (issue #9): `automatic: true` makes `@ribose-cla agree`
+  # itself the signature — a GitHub-only record lands and the check
+  # re-runs, with no completion link. OFF: counsel's call (tracker #16).
   comment_signing:
     automatic: false
   notify:

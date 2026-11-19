@@ -1,8 +1,11 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { createApp } from "../src/app";
 import { signCompletionToken, readCompletionToken, isAgreeCommand, thirdPartyGate } from "../src/portal/completion";
 import { makeSessionCookie, SESSION_COOKIE } from "../src/portal/session";
-import { makeFixture, makeKeyPem, WEBHOOK_SECRET, hmacHex, type Fixture } from "./helpers";
+import { loadSnapshot } from "../src/store/load";
+import { GENERATED_CONFIG } from "../src/generated/config";
+import type { Editions } from "@riboseinc/cla-kernel";
+import { makeFixture, makeKeyPem, WEBHOOK_SECRET, hmacHex, CURRENT_EDITIONS, type Fixture } from "./helpers";
 
 const ENV = (pem: string) => ({
   OIDC_CLIENT_SECRET: "op-secret",
@@ -23,7 +26,7 @@ const commentPayload = (commenter: string, body: string, isPr = true) => ({
   installation: { id: 42 },
   repository: { full_name: "rnpgp/rnp" },
   issue: { number: 1, user: { login: "pr-author" }, ...(isPr ? { pull_request: {} } : {}) },
-  comment: { user: { login: commenter }, body },
+  comment: { user: { login: commenter, id: 4242 }, body },
 });
 
 async function deliverComment(payload: Record<string, unknown>): Promise<Response> {
@@ -35,6 +38,39 @@ async function deliverComment(payload: Record<string, unknown>): Promise<Respons
     headers: { "content-type": "application/json", "x-github-event": "issue_comment", "x-hub-signature-256": `sha256=${sig}` },
   });
 }
+
+/** A D1 stand-in that records every statement with its bound values. */
+function memoryDb() {
+  const rows: Array<{ sql: string; bind: unknown[] }> = [];
+  return {
+    prepare: (sql: string) => ({
+      bind: (...v: unknown[]) => ({
+        run: async () => {
+          rows.push({ sql, bind: v });
+        },
+        all: async () => ({ results: [] }),
+        first: async () => null,
+      }),
+    }),
+    rows,
+  };
+}
+
+/** Every record the app wrote to the data repo: path -> decoded JSON. */
+function written(): Record<string, unknown> {
+  const files: Record<string, unknown> = {};
+  for (const call of fx.calls) {
+    if (call.method !== "PUT" || !call.url.includes("/contents/")) continue;
+    const path = call.url.split("/contents/")[1]!;
+    files[path] = JSON.parse(Buffer.from((call.body as Record<string, unknown>)["content"] as string, "base64").toString("utf8"));
+  }
+  return files;
+}
+
+const lastReply = (): string => {
+  const reply = fx.calls.filter((c) => c.method === "POST" && c.url.endsWith("/issues/1/comments")).at(-1);
+  return ((reply!.body as Record<string, unknown>)["body"]) as string;
+};
 
 beforeEach(async () => {
   pem = await makeKeyPem();
@@ -65,6 +101,9 @@ describe("issue_comment: @ribose-cla agree", () => {
     const m = text.match(/t=([A-Za-z0-9_.-]+)/)!;
     const token = await readCompletionToken("op-secret", m![1], Date.now());
     expect(token).toMatchObject({ repo: "rnpgp/rnp", pr: 1, login: "stranger" });
+    // Option B is OFF (issue #9 acceptance): the command never signs by
+    // itself — no record lands, the link does.
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/icla/"))).toBe(false);
   });
 
   it("an already-signed committer is told so (no completion link)", async () => {
@@ -86,6 +125,101 @@ describe("issue_comment: @ribose-cla agree", () => {
   it("bot comments and non-PR issues are ignored", async () => {
     expect(((await deliverComment(commentPayload("dependabot[bot]", "@ribose-cla agree"))).json() as Promise<Record<string, unknown>>)).resolves.toMatchObject({ ignored: expect.any(String) });
     expect(((await deliverComment(commentPayload("stranger", "@ribose-cla agree", false))).json() as Promise<Record<string, unknown>>)).resolves.toMatchObject({ ignored: expect.any(String) });
+  });
+});
+
+// ---- issue #9 / tracker #16 item 3: Option B, fully-automatic comment signing ----
+
+describe("Option B: fully-automatic comment signing (coverage.comment_signing.automatic)", () => {
+  const flagWas = GENERATED_CONFIG.coverage.commentSigning.automatic;
+  beforeEach(() => {
+    GENERATED_CONFIG.coverage.commentSigning.automatic = true;
+  });
+  afterEach(() => {
+    GENERATED_CONFIG.coverage.commentSigning.automatic = flagWas;
+  });
+
+  it("the comment itself signs: a GitHub-only record lands, the check re-runs, and the signer is queued for the sweep", async () => {
+    const db = memoryDb();
+    const a = createApp({ ...ENV(pem), DB: db as unknown as D1Database }, { fetcher: fx.fetcher });
+    const raw = JSON.stringify(commentPayload("stranger", "@ribose-cla agree"));
+    const sig = await hmacHex(WEBHOOK_SECRET, raw);
+    const res = await a.request("/api/github/webhook", {
+      method: "POST",
+      body: raw,
+      headers: { "content-type": "application/json", "x-github-event": "issue_comment", "x-hub-signature-256": `sha256=${sig}` },
+    });
+    const out = (await res.json()) as Record<string, unknown>;
+    expect(out).toMatchObject({ replied: true, reason: "signed automatically" });
+
+    const put = fx.calls.find((c) => c.method === "PUT" && c.url.includes("/contents/icla/"));
+    expect(put).toBeDefined();
+    const record = JSON.parse(Buffer.from((put!.body as Record<string, unknown>)["content"] as string, "base64").toString()) as Record<string, unknown>;
+    expect(record).toMatchObject({
+      github_login: "stranger",
+      github_id: 4242,
+      source: "comment-auto",
+      past_contributions_included: true,
+      claEdition: { kind: "icla", version: CURRENT_EDITIONS.icla.version, textSha256: CURRENT_EDITIONS.icla.sha256 },
+    });
+    // GitHub-only: nothing the portal would have collected is invented here
+    expect(record["ribose_id_sub"]).toBeUndefined();
+    expect(record["name"]).toBeUndefined();
+    expect(record["country"]).toBeUndefined();
+
+    // the reply states the terms, links the exact instrument, and
+    // carries no completion link — the comment already signed
+    const text = lastReply();
+    expect(text).toContain("@stranger");
+    expect(text).toContain("Individual CLA");
+    expect(text).toContain("/agreements/text/icla/");
+    expect(text).toContain("all your previous contributions");
+    expect(text).not.toContain("/icla/complete");
+
+    // the check re-ran on this head, and the signer's other open PRs are
+    // queued for the write-back sweep (the same refresh portal signing gets)
+    expect(fx.calls.some((c) => c.method === "POST" && c.url.endsWith("/repos/rnpgp/rnp/check-runs"))).toBe(true);
+    expect(db.rows.some((r) => r.sql.includes("sweep_queue") && r.bind[0] === "stranger")).toBe(true);
+  });
+
+  it("the automatic record reads back as live coverage for the signer", async () => {
+    const res = await deliverComment(commentPayload("stranger", "@ribose-cla agree"));
+    expect(((await res.json()) as Record<string, unknown>)["reason"]).toBe("signed automatically");
+
+    const files = written();
+    const path = Object.keys(files).find((p) => p.startsWith("icla/"));
+    expect(path).toBeDefined();
+    const editions: Editions = {
+      icla: { kind: "icla", version: CURRENT_EDITIONS.icla.version, textSha256: CURRENT_EDITIONS.icla.sha256 },
+      ocla: { kind: "ocla", version: CURRENT_EDITIONS.ocla.version, textSha256: CURRENT_EDITIONS.ocla.sha256 },
+    };
+    const { snapshot, rejected } = await loadSnapshot(
+      { listRecords: async () => ({ paths: Object.keys(files).sort(), read: async (p: string) => JSON.stringify(files[p]) }) },
+      editions,
+    );
+    expect(rejected).toEqual([]);
+    expect(snapshot.iclas).toHaveLength(1);
+    expect(snapshot.iclas[0]).toMatchObject({ githubLogin: "stranger", edition: editions.icla });
+  });
+
+  it("a separate-agreement registry login is told the CLA process does not apply: nothing recorded, no re-check", async () => {
+    fx.routes.set("/repos/rnpgp/rnp/pulls/1/commits", () =>
+      Response.json([{ author: { login: "example-staff", type: "User" }, commit: { author: { email: "staff@example.org" } } }], { status: 200 }),
+    );
+    const res = await deliverComment(commentPayload("example-staff", "@ribose-cla agree"));
+    const out = (await res.json()) as Record<string, unknown>;
+    expect(out).toMatchObject({ replied: true, reason: "separate-agreement registry" });
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/icla/"))).toBe(false);
+    expect(fx.calls.some((c) => c.method === "POST" && c.url.endsWith("/check-runs"))).toBe(false);
+    expect(lastReply()).toContain("existing Ribose agreement");
+    expect(lastReply()).not.toContain("/icla/complete");
+  });
+
+  it("an already-signed committer is told so instead of signing twice", async () => {
+    const res = await deliverComment(commentPayload("tj-91", "@ribose-cla agree"));
+    expect(((await res.json()) as Record<string, unknown>)["reason"]).toBe("already-signed");
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/icla/"))).toBe(false);
+    expect(lastReply()).not.toContain("/icla/complete");
   });
 });
 

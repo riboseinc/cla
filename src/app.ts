@@ -164,6 +164,7 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           const inst = installationId(evt.payload);
           const bodyText = typeof comment?.["body"] === "string" ? (comment["body"] as string) : "";
           const commenter = comment?.["user"] && typeof comment["user"] === "object" ? ((comment["user"] as Record<string, unknown>)["login"] as string | undefined) : undefined;
+          const commenterId = comment?.["user"] && typeof comment["user"] === "object" ? ((comment["user"] as Record<string, unknown>)["id"] as number | undefined) : undefined;
           const isPr = issue?.["pull_request"] !== undefined;
           const prAuthor = issue?.["user"] && typeof issue["user"] === "object" ? ((issue["user"] as Record<string, unknown>)["login"] as string | undefined) : undefined;
           if (!comment || !issue || !repo || !inst || typeof number !== "number" || !commenter || !prAuthor) {
@@ -172,9 +173,15 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           if (!isPr || commenter.endsWith("[bot]") || (!parseAgreeCommand(bodyText) && !parseThirdPartyCommand(bodyText))) {
             return c.json({ ok: true, ignored: "not a command on a PR" });
           }
-          const r = parseAgreeCommand(bodyText)
-            ? await handleAgreeCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, prAuthor, body: bodyText })
-            : await handleThirdPartyCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, prAuthor, body: bodyText });
+          if (parseAgreeCommand(bodyText)) {
+            const r = await handleAgreeCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, commenterId, prAuthor, body: bodyText });
+            // A signature landed from the comment (Option B): the signer's
+            // OTHER open pull requests re-evaluate, exactly as a portal
+            // signing does — the current one already re-ran inline.
+            if (r.signed) await enqueueSweepFor(env, [commenter]);
+            return c.json({ ok: true, replied: r.replied, reason: r.reason });
+          }
+          const r = await handleThirdPartyCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, prAuthor, body: bodyText });
           return c.json({ ok: true, replied: r.replied, reason: r.reason });
         }
         if (evt.event === "check_run" && evt.action === "rerequested") {

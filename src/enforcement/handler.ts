@@ -12,6 +12,7 @@ import { randomToken } from "../portal/github-oauth";
 import { checkRunBody, createCheckRun, commentBody, conclusionFor, upsertComment, retractCoverageComment, postClosingComment, closingComment, preRegisterCheck, staleDeploymentBody, CHECK_NAME } from "./checks";
 import { signAttributionToken, optionKey } from "../portal/attribution";
 import { signCompletionToken, parseAgreeCommand, parseThirdPartyCommand, parseMetaCommand, thirdPartyGate, type AgreeCommand } from "../portal/completion";
+import { iclaRecordId } from "../portal/helpers";
 
 /**
  * The pull_request orchestration (docs/design.md §5). Every store or
@@ -260,8 +261,8 @@ export async function handleThirdPartyCommand(
 
 export async function handleAgreeCommand(
   deps: EnforcementDeps,
-  args: { installationId: number; repoFullName: string; prNumber: number; commenter: string; prAuthor: string; body: string },
-): Promise<{ replied: boolean; reason?: string }> {
+  args: { installationId: number; repoFullName: string; prNumber: number; commenter: string; commenterId?: number; prAuthor: string; body: string },
+): Promise<{ replied: boolean; reason?: string; signed?: boolean }> {
   const full = args.repoFullName;
   const commenter = args.commenter.toLowerCase();
   const command = parseAgreeCommand(args.body);
@@ -279,14 +280,59 @@ export async function handleAgreeCommand(
   );
 
   if (command.kind === "icla-completion") {
+    const portalBase = `https://${deps.config.instance.portalHost}`;
     const currentIcla = snapshot.iclas.find((r) => r.githubLogin.toLowerCase() === commenter && r.edition.textSha256 === editions.icla.textSha256);
     if (currentIcla) {
       await postBotReply(deps.api, args.installationId, full, args.prNumber, `@${commenter} you already signed the Individual CLA v${currentIcla.edition.version} — you're covered.`);
       return { replied: true, reason: "already-signed" };
     }
+    // The separate-agreement registry (issue #100): their coverage IS the
+    // existing Ribose agreement, so neither flow may ask them to sign —
+    // an automatic signature would record an instrument they do not need.
+    const onRegistry = (deps.config.instance.separateAgreement?.logins ?? []).some((l) => l.toLowerCase() === commenter);
+    if (onRegistry) {
+      await postBotReply(deps.api, args.installationId, full, args.prNumber, `@${commenter} — this work is submitted under an existing Ribose agreement; the CLA process does not apply to you. Nothing was recorded.`);
+      return { replied: true, reason: "separate-agreement registry" };
+    }
+    // Option B (issue #9, tracker #16 item 3): fully-automatic comment
+    // signing, OFF unless the instance config says otherwise — counsel's
+    // call. The comment IS the signature: a GitHub-only minimal record
+    // lands in the data repo (no portal account, no identity subject),
+    // the check re-runs on this head, and the reply states the terms the
+    // thread is signing under.
+    if (deps.config.coverage.commentSigning.automatic) {
+      await appendRecord(
+        { api: deps.api, installationId: deps.config.github.dataInstallationId, dataRepo: deps.config.github.dataRepo, now: () => Date.now() },
+        "icla",
+        {
+          id: await iclaRecordId(commenter, editions.icla.textSha256, Date.now()),
+          github_login: commenter,
+          ...(typeof args.commenterId === "number" ? { github_id: args.commenterId } : {}),
+          claEdition: editions.icla,
+          signed_at: new Date().toISOString(),
+          // The Agreement includes ALL previous contributions: the portal
+          // accepts no other election, so the comment cannot elect one.
+          past_contributions_included: true,
+          source: "comment-auto",
+        },
+      );
+      const autoSha = await fetchPrHeadSha(deps.api, args.installationId, full, args.prNumber);
+      await evaluatePullRequest(deps, { installationId: args.installationId, repoFullName: full, prNumber: args.prNumber, headSha: autoSha });
+      await postBotReply(
+        deps.api,
+        args.installationId,
+        full,
+        args.prNumber,
+        [
+          `@${commenter} — signed. The **[Individual CLA v${deps.config.legal.current.icla}](${portalBase}/agreements/text/icla/${deps.config.legal.current.icla})** is on record for you as of this comment, **including all your previous contributions**; the check re-ran and reflects it.`,
+          ``,
+          `_Recorded automatically from \`@ribose-cla agree\` (comment signing is fully-automatic on this instance): a GitHub-only signature record — no portal account, no identity subject._`,
+        ].join("\n"),
+      );
+      return { replied: true, reason: "signed automatically", signed: true };
+    }
     if (!deps.attributionSecret) return { replied: false, reason: "portal unconfigured (fail-closed)" };
     const token = await signCompletionToken(deps.attributionSecret, { repo: full, pr: args.prNumber, login: commenter }, Date.now());
-    const portalBase = `https://${deps.config.instance.portalHost}`;
     await postBotReply(
       deps.api,
       args.installationId,
