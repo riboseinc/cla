@@ -11,7 +11,7 @@ import { appendRecord } from "../store/write";
 import { randomToken } from "../portal/github-oauth";
 import { checkRunBody, createCheckRun, commentBody, conclusionFor, upsertComment, retractCoverageComment, postClosingComment, closingComment, preRegisterCheck, staleDeploymentBody, CHECK_NAME } from "./checks";
 import { signAttributionToken, optionKey } from "../portal/attribution";
-import { signCompletionToken, parseAgreeCommand, parseThirdPartyCommand, parseMetaCommand, thirdPartyGate, type AgreeCommand } from "../portal/completion";
+import { signCompletionToken, thirdPartyGate, type AgreeCommand, type ThirdPartyParse, type MetaCommand } from "../portal/completion";
 import { iclaRecordId } from "../portal/helpers";
 import { evaluateWithOrgMembership, resolveOrgMemberships } from "./org-membership";
 
@@ -198,12 +198,15 @@ export async function closeMergedPullRequest(
   return { posted: true };
 }
 
-/** issue_comment.created — the `@ribose-cla` command grammar
- *  (docs/design.md §3.12 + issue #57). Only PR authors/committers get
- *  a reply; everyone else is silently ignored. A comment never grants
- *  coverage by self-declaration: `icla` elects only when the kernel's
- *  live paths offer the ICLA, and `company` elects only against the
- *  org's effective Schedule A — otherwise it files a join request. */
+type CommentContext = {
+  installationId: number;
+  repoFullName: string;
+  prNumber: number;
+  commenter: string;
+  commenterId?: number;
+  prAuthor: string;
+};
+
 /** issue_comment.created - the clause-7 declaration (issues #63, #118):
  *  the committer declares the work is submitted on behalf of a named third
  *  party, under an SPDX license Ribose accepts. The declaration is
@@ -214,12 +217,11 @@ export async function closeMergedPullRequest(
  *  every declaration, and a license off the list is refused by name. */
 export async function handleThirdPartyCommand(
   deps: EnforcementDeps,
-  args: { installationId: number; repoFullName: string; prNumber: number; commenter: string; prAuthor: string; body: string },
+  args: CommentContext & { command: ThirdPartyParse },
 ): Promise<{ replied: boolean; reason?: string }> {
   const full = args.repoFullName;
   const commenter = args.commenter.toLowerCase();
-  const parsed = parseThirdPartyCommand(args.body);
-  if (!parsed) return { replied: false, reason: "not a command (ignored)" };
+  const parsed = args.command;
 
   const { committers } = await fetchPrCommitters(deps.api, args.installationId, full, args.prNumber);
   const logins = new Set<string>(committers.flatMap((c) => (c.login ? [c.login.toLowerCase()] : [])));
@@ -282,14 +284,19 @@ export async function handleThirdPartyCommand(
   return { replied: true, reason: "third-party declaration recorded" };
 }
 
+/** issue_comment.created — the `@ribose-cla` command grammar
+ *  (docs/design.md §3.12 + issue #57). Only PR authors/committers get
+ *  a reply; everyone else is silently ignored. A comment never grants
+ *  coverage by self-declaration: `icla` elects only when the kernel's
+ *  live paths offer the ICLA, and `company` elects only against the
+ *  org's effective Schedule A — otherwise it files a join request. */
 export async function handleAgreeCommand(
   deps: EnforcementDeps,
-  args: { installationId: number; repoFullName: string; prNumber: number; commenter: string; commenterId?: number; prAuthor: string; body: string },
+  args: CommentContext & { command: AgreeCommand },
 ): Promise<{ replied: boolean; reason?: string; signed?: boolean }> {
   const full = args.repoFullName;
   const commenter = args.commenter.toLowerCase();
-  const command = parseAgreeCommand(args.body);
-  if (!command) return { replied: false, reason: "not a command (ignored)" };
+  const command = args.command;
 
   const { committers } = await fetchPrCommitters(deps.api, args.installationId, full, args.prNumber);
   const logins = new Set<string>(committers.flatMap((c) => (c.login ? [c.login.toLowerCase()] : [])));
@@ -467,12 +474,11 @@ export async function handleAgreeCommand(
  *  command: the bot answers the PR's own people, never strangers. */
 export async function handleMetaCommand(
   deps: EnforcementDeps,
-  args: { installationId: number; repoFullName: string; prNumber: number; commenter: string; prAuthor: string; body: string },
+  args: CommentContext & { command: MetaCommand },
 ): Promise<{ replied: boolean; reason?: string }> {
   const full = args.repoFullName;
   const commenter = args.commenter.toLowerCase();
-  const command = parseMetaCommand(args.body);
-  if (!command) return { replied: false, reason: "not a command (ignored)" };
+  const command = args.command;
 
   const { committers } = await fetchPrCommitters(deps.api, args.installationId, full, args.prNumber);
   const logins = new Set<string>(committers.flatMap((c) => (c.login ? [c.login.toLowerCase()] : [])));

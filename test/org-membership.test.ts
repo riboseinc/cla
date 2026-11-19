@@ -247,7 +247,7 @@ describe("org membership: the enforcement surfaces", () => {
 
     const r = await handleAgreeCommand(
       { api: makeApi(), config: configWithMembership(), requestJoin: async () => ((joinFiled = true), { requested: true }) },
-      { installationId: 42, repoFullName: "rnpgp/rnp", prNumber: 1, commenter: "stranger", prAuthor: "stranger", body: "@ribose-cla agree company=mtg-ag" },
+      { installationId: 42, repoFullName: "rnpgp/rnp", prNumber: 1, commenter: "stranger", prAuthor: "stranger", command: { kind: "company", company: "mtg-ag" } },
     );
 
     expect(r.replied).toBe(true);
@@ -264,7 +264,7 @@ describe("org membership: the enforcement surfaces", () => {
 
     const r = await handleMetaCommand(
       { api: makeApi(), config: configWithMembership() },
-      { installationId: 42, repoFullName: "rnpgp/rnp", prNumber: 1, commenter: "stranger", prAuthor: "stranger", body: "@ribose-cla status" },
+      { installationId: 42, repoFullName: "rnpgp/rnp", prNumber: 1, commenter: "stranger", prAuthor: "stranger", command: "status" },
     );
 
     expect(r.reason).toBe("status: org-membership");
@@ -278,7 +278,7 @@ describe("org membership: the enforcement surfaces", () => {
 
     const r = await handleMetaCommand(
       { api: makeApi(), config: GENERATED_CONFIG },
-      { installationId: 42, repoFullName: "rnpgp/rnp", prNumber: 1, commenter: "stranger", prAuthor: "stranger", body: "@ribose-cla status" },
+      { installationId: 42, repoFullName: "rnpgp/rnp", prNumber: 1, commenter: "stranger", prAuthor: "stranger", command: "status" },
     );
 
     expect(r.reason).toBe("status: none");
