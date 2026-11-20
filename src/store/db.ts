@@ -168,3 +168,35 @@ export async function completeSweep(db: D1Like, login: string): Promise<void> {
     .bind(login)
     .run();
 }
+
+// ---- the open-PR index (rnpgp/rnp#2587) ----
+// Populated by the pull_request webhooks the app already receives. The
+// sweep reads a login's rows directly instead of walking every
+// installation and repository per login.
+
+export type OpenPrRow = {
+  repo: string;
+  pr: number;
+  login: string;
+  installationId: number;
+  headSha: string | null;
+};
+
+export async function upsertOpenPr(db: D1Like, row: OpenPrRow): Promise<void> {
+  await db
+    .prepare("INSERT INTO open_prs (repo, pr, login, installation_id, head_sha, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (repo, pr) DO UPDATE SET login = excluded.login, installation_id = excluded.installation_id, head_sha = excluded.head_sha, updated_at = excluded.updated_at")
+    .bind(row.repo.toLowerCase(), row.pr, row.login.toLowerCase(), row.installationId, row.headSha ?? null, new Date().toISOString())
+    .run();
+}
+
+export async function removeOpenPr(db: D1Like, repo: string, pr: number): Promise<void> {
+  await db.prepare("DELETE FROM open_prs WHERE repo = ? AND pr = ?").bind(repo.toLowerCase(), pr).run();
+}
+
+export async function openPrsForLogin(db: D1Like, login: string): Promise<OpenPrRow[]> {
+  const res = await db
+    .prepare("SELECT repo, pr, login, installation_id, head_sha FROM open_prs WHERE login = ? ORDER BY updated_at ASC")
+    .bind(login.toLowerCase())
+    .all<{ repo: string; pr: number; installation_id: number; head_sha: string | null }>();
+  return (res.results ?? []).map((r) => ({ repo: r.repo, pr: r.pr, login, installationId: r.installation_id, headSha: r.head_sha }));
+}

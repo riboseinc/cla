@@ -19,7 +19,7 @@ import { normalizeCommitEmail, emailChallengeHash, EMAIL_CHALLENGE_TTL_MS } from
 import { loadSnapshot, oclaForSlug } from "./store/load";
 import { makeListRecords } from "./store/github-store";
 import { kernelEditions } from "./config";
-import { d1, hasPendingRequest, requestJoin, pendingRequests, decideRequest, audit, createEmailChallenge, liveEmailChallenge, consumeEmailChallenge } from "./store/db";
+import { d1, hasPendingRequest, requestJoin, pendingRequests, decideRequest, audit, createEmailChallenge, liveEmailChallenge, consumeEmailChallenge, upsertOpenPr, removeOpenPr } from "./store/db";
 import { verifyEvidence } from "./store/evidence";
 import { sha256Hex } from "./portal/oidc";
 import { sendMail, mailDeps } from "./notify/mail";
@@ -142,6 +142,17 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           if (!pr || !repo || !inst || !sha || typeof number !== "number") {
             return c.json({ error: "payload missing expected fields" }, 400);
           }
+          // Keep the open-PR index fresh (rnpgp/rnp#2587): the sweep reads
+          // this table instead of enumerating the estate per login.
+          const prLogin = pr["user"] && typeof pr["user"] === "object" ? ((pr["user"] as Record<string, unknown>)["login"] as string | undefined) : undefined;
+          const idb = d1(env);
+          if (idb && prLogin) {
+            try {
+              await upsertOpenPr(idb, { repo, pr: number, login: prLogin, installationId: inst, headSha: sha });
+            } catch {
+              // index upkeep is best-effort; the walk remains the fallback
+            }
+          }
           const r = await evaluatePullRequest(deps, { installationId: inst, repoFullName: repo, prNumber: number, headSha: sha });
           return c.json({ ok: true, outcome: r.outcome });
         }
@@ -150,6 +161,18 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           const number = evt.payload["number"];
           const repo = repoFullName(evt.payload);
           const inst = installationId(evt.payload);
+          {
+            // A closed PR is no longer open: drop it from the sweep index
+            // (re-opened PRs are re-indexed by the reopened event).
+            const idb = d1(env);
+            if (idb && repo && typeof number === "number") {
+              try {
+                await removeOpenPr(idb, repo, number);
+              } catch {
+                // best-effort
+              }
+            }
+          }
           if (pr?.["merged"] !== true || !repo || !inst || typeof number !== "number") {
             return c.json({ ok: true, ignored: "closed-without-merge" });
           }
