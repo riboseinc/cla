@@ -5,7 +5,7 @@ import type { FetchLike } from "./github/api";
 import { GENERATED_CONFIG } from "./generated/config";
 import { parseEvent, verifyWebhookSignature, installationId, repoFullName } from "./github/webhook";
 import { GithubApi } from "./github/api";
-import { evaluatePullRequest, closeMergedPullRequest, handleAgreeCommand, handleThirdPartyCommand, preRegisterRepos, preRegisterInstallation, PRE_REGISTER_BATCH, type EnforcementDeps } from "./enforcement/handler";
+import { evaluatePullRequest, closeMergedPullRequest, handleAgreeCommand, handleThirdPartyCommand, handleMetaCommand, preRegisterRepos, preRegisterInstallation, PRE_REGISTER_BATCH, type EnforcementDeps } from "./enforcement/handler";
 import { enqueueSweepFor, drainSweepStep } from "./enforcement/sweep";
 import { repoCoverageStep, DEFAULT_REPOS_PER_STEP, DEFAULT_COMMIT_WINDOW } from "./enforcement/report";
 import { CHECK_NAME } from "./enforcement/checks";
@@ -193,18 +193,26 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           if (!comment || !issue || !repo || !inst || typeof number !== "number" || !commenter || !prAuthor) {
             return c.json({ error: "payload missing expected fields" }, 400);
           }
-          if (!isPr || commenter.endsWith("[bot]") || (!parseAgreeCommand(bodyText) && !parseThirdPartyCommand(bodyText))) {
+          if (!isPr || commenter.endsWith("[bot]")) {
             return c.json({ ok: true, ignored: "not a command on a PR" });
           }
-          if (parseAgreeCommand(bodyText)) {
-            const r = await handleAgreeCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, commenterId, prAuthor, body: bodyText });
-            // A signature landed from the comment (Option B): the signer's
-            // OTHER open pull requests re-evaluate, exactly as a portal
-            // signing does — the current one already re-ran inline.
-            if (r.signed) await enqueueSweepFor(env, [commenter]);
-            return c.json({ ok: true, replied: r.replied, reason: r.reason });
+          const args = { installationId: inst, repoFullName: repo, prNumber: number, commenter, commenterId, prAuthor };
+          let r: { replied: boolean; reason?: string; signed?: boolean };
+          const meta = parseMetaCommand(bodyText);
+          if (meta) {
+            r = await handleMetaCommand(deps, { ...args, command: meta });
+          } else {
+            const agree = parseAgreeCommand(bodyText);
+            if (agree) {
+              r = await handleAgreeCommand(deps, { ...args, command: agree });
+            } else {
+              const thirdParty = parseThirdPartyCommand(bodyText);
+              if (!thirdParty) return c.json({ ok: true, ignored: "not a command on a PR" });
+              r = await handleThirdPartyCommand(deps, { ...args, command: thirdParty });
+            }
           }
-          const r = await handleThirdPartyCommand(deps, { installationId: inst, repoFullName: repo, prNumber: number, commenter, prAuthor, body: bodyText });
+          // Queue the signer's other PRs; this one already re-ran inline.
+          if (r.signed) await enqueueSweepFor(env, [commenter]);
           return c.json({ ok: true, replied: r.replied, reason: r.reason });
         }
         if (evt.event === "check_run" && evt.action === "rerequested") {
