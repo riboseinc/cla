@@ -1,0 +1,155 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and publish (defaults to the current tag ref)"
+        required: false
+        type: string
+        default: ""
+      support-until:
+        description: "Declared support end date in YYYY-MM-DD format"
+        required: false
+        type: string
+        default: "2029-11-23"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Verify gates and build release artifact
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      support_until: ${{ steps.meta.outputs.support_until }}
+    steps:
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_SUPPORT_UNTIL: ${{ inputs.support-until }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_TAG}" ]; then
+            TAG="${INPUT_TAG}"
+          elif [ "${REF_TYPE}" = "tag" ]; then
+            TAG="${REF_NAME}"
+          else
+            echo "::error::Release tag is required (push a v* tag or provide inputs.tag)."
+            exit 1
+          fi
+          SUPPORT_UNTIL="${INPUT_SUPPORT_UNTIL:-2029-11-23}"
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "support_until=${SUPPORT_UNTIL}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Package release archive
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --dry-run --config wrangler.example.toml --outdir dist/worker
+          STAGE_DIR="${RUNNER_TEMP}/ribose-cla-${RELEASE_TAG}"
+          rm -rf "${STAGE_DIR}"
+          mkdir -p "${STAGE_DIR}" release-artifacts
+          cp -R site/dist "${STAGE_DIR}/site-dist"
+          cp -R dist/worker "${STAGE_DIR}/worker"
+          cp -R migrations "${STAGE_DIR}/migrations"
+          cp package.json package-lock.json LICENSE README.md "${STAGE_DIR}/"
+          mkdir -p "${STAGE_DIR}/site" "${STAGE_DIR}/packages/kernel"
+          cp site/package.json "${STAGE_DIR}/site/package.json"
+          cp packages/kernel/package.json "${STAGE_DIR}/packages/kernel/package.json"
+          tar -C "${RUNNER_TEMP}" -czf "release-artifacts/ribose-cla-${RELEASE_TAG}.tar.gz" "ribose-cla-${RELEASE_TAG}"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: release-artifacts
+          path: release-artifacts/
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-artifacts
+          path: release-artifacts
+
+      - name: Compute checksum and create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ARCHIVE="release-artifacts/ribose-cla-${RELEASE_TAG}.tar.gz"
+          (cd release-artifacts && sha256sum "ribose-cla-${RELEASE_TAG}.tar.gz" > "ribose-cla-${RELEASE_TAG}.tar.gz.sha256")
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" \
+              "${ARCHIVE}" \
+              "${ARCHIVE}.sha256" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+          else
+            gh release create "${RELEASE_TAG}" \
+              "${ARCHIVE}" \
+              "${ARCHIVE}.sha256" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${RELEASE_TAG}" \
+              --generate-notes
+          fi
+
+  provenance:
+    name: Generate and verify release provenance
+    needs: [build, release]
+    uses: riboseinc/provenance-release/.github/workflows/release.yml@ee9153324c45246fa4319cdbebc3ceb9865aa527
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      artifacts: release-artifacts
+      artifact-name: release-artifacts
+      release-tag: ${{ needs.build.outputs.tag }}
+      support-until: ${{ needs.build.outputs.support_until }}
+      author: "Ribose"
