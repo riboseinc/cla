@@ -18,7 +18,12 @@ Do not open public GitHub issues or pull requests for undisclosed security vulne
 
 Report suspected security vulnerabilities through GitHub Private Vulnerability Reporting at <https://github.com/riboseinc/cla/security/advisories/new>. You may also contact the Ribose security team via <security@ribose.com>.
 
-Published vulnerability advisories, package statuses, and OSV/GHSA feeds for Ribose software are available at <https://cve.ribose.com>. Confirmed vulnerabilities in supported release streams are coordinated, patched, and published through GitHub Security Advisories and <https://cve.ribose.com>.
+Published vulnerability advisories, package statuses, and machine-readable vulnerability feeds for Ribose software are available at <https://cve.ribose.com>. Confirmed vulnerabilities in supported release streams are coordinated, patched, and published through GitHub Security Advisories and <https://cve.ribose.com>.
+
+- The OSV feed for `riboseinc/cla` is published at <https://cve.ribose.com/feeds/osv/cla.json>.
+- The GHSA feed for `riboseinc/cla` is published at <https://cve.ribose.com/feeds/ghsa/cla.json>.
+- The CSAF 2.0 feed for `riboseinc/cla` is published at <https://cve.ribose.com/feeds/csaf/cla.json>.
+- The OpenVEX feed for `riboseinc/cla` is published at <https://cve.ribose.com/feeds/vex/cla.json>.
 
 ## Backport Policy
 
