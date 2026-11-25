@@ -1,5 +1,8 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { createApp } from "../src/app";
+import { GENERATED_CONFIG } from "../src/generated/config";
+import { GithubApi } from "../src/github/api";
+import { handleAgreeCommand, handleMetaCommand, handleThirdPartyCommand } from "../src/enforcement/handler";
 import { makeFixture, makeKeyPem, WEBHOOK_SECRET, CURRENT_EDITIONS, pullRequestPayload, signedBody, type Fixture } from "./helpers";
 
 let pem: string;
@@ -141,6 +144,31 @@ describe("issue_comment: ignored meta commands", () => {
     const res = await deliverComment(commentPayload("stranger", "@ribose-cla recheck please"));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ignored: "not a command on a PR" });
+    expect(fx.calls).toEqual([]);
+  });
+
+  it("ignores commands on a repo in repos_without_cla", async () => {
+    const noopCache = { get: () => undefined, put: () => {} };
+    const api = new GithubApi({ appId: "1", privateKeyPem: pem, fetcher: fx.fetcher, now: () => Date.now(), tokenCache: noopCache, etagCache: noopCache });
+    const config = {
+      ...GENERATED_CONFIG,
+      coverage: { ...GENERATED_CONFIG.coverage, reposWithoutCla: ["example-org/mirror"] },
+    };
+    const deps = { api, config };
+    const base = { installationId: 42, repoFullName: "example-org/mirror", prNumber: 1, commenter: "stranger", prAuthor: "pr-author" };
+
+    expect(await handleMetaCommand(deps, { ...base, command: "help" })).toEqual({
+      replied: false,
+      reason: "repo is in repos_without_cla (out of scope by config)",
+    });
+    expect(await handleAgreeCommand(deps, { ...base, command: { kind: "icla-completion" } })).toEqual({
+      replied: false,
+      reason: "repo is in repos_without_cla (out of scope by config)",
+    });
+    expect(await handleThirdPartyCommand(deps, { ...base, command: { kind: "declaration", name: "Example Corp", spdx: "MIT" } })).toEqual({
+      replied: false,
+      reason: "repo is in repos_without_cla (out of scope by config)",
+    });
     expect(fx.calls).toEqual([]);
   });
 });

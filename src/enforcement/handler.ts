@@ -220,6 +220,9 @@ export async function handleThirdPartyCommand(
   args: CommentContext & { command: ThirdPartyParse },
 ): Promise<{ replied: boolean; reason?: string }> {
   const full = args.repoFullName;
+  if (deps.config.coverage.reposWithoutCla.includes(full.toLowerCase())) {
+    return { replied: false, reason: "repo is in repos_without_cla (out of scope by config)" };
+  }
   const commenter = args.commenter.toLowerCase();
   const parsed = args.command;
 
@@ -295,6 +298,9 @@ export async function handleAgreeCommand(
   args: CommentContext & { command: AgreeCommand },
 ): Promise<{ replied: boolean; reason?: string; signed?: boolean }> {
   const full = args.repoFullName;
+  if (deps.config.coverage.reposWithoutCla.includes(full.toLowerCase())) {
+    return { replied: false, reason: "repo is in repos_without_cla (out of scope by config)" };
+  }
   const commenter = args.commenter.toLowerCase();
   const command = args.command;
 
@@ -477,6 +483,9 @@ export async function handleMetaCommand(
   args: CommentContext & { command: MetaCommand },
 ): Promise<{ replied: boolean; reason?: string }> {
   const full = args.repoFullName;
+  if (deps.config.coverage.reposWithoutCla.includes(full.toLowerCase())) {
+    return { replied: false, reason: "repo is in repos_without_cla (out of scope by config)" };
+  }
   const commenter = args.commenter.toLowerCase();
   const command = args.command;
 

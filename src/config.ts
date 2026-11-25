@@ -211,7 +211,22 @@ export async function parseConfig(yamlText: string, readLegal: LegalReader): Pro
     }
     perOrg[org] = lowered;
   }
-  const reposWithoutCla = lowerAll(coverage["repos_without_cla"]).filter(isRepoRef);
+  const rawReposWithoutCla = coverage["repos_without_cla"];
+  const reposWithoutCla: string[] = [];
+  if (rawReposWithoutCla !== undefined && rawReposWithoutCla !== null) {
+    if (!Array.isArray(rawReposWithoutCla)) {
+      errors.push({ path: "coverage.repos_without_cla", message: "must be a list of org/name strings" });
+    } else {
+      for (const entry of rawReposWithoutCla) {
+        const v = str(entry);
+        if (!v || !isRepoRef(v)) {
+          errors.push({ path: "coverage.repos_without_cla", message: `entries must be org/name (got ${JSON.stringify(entry)})` });
+        } else {
+          reposWithoutCla.push(v.toLowerCase());
+        }
+      }
+    }
+  }
   // The proportionality control (issue #58): absent = OFF (the default).
   const minimalRaw = obj(coverage["minimal_change"]);
   const mcFiles = num(minimalRaw["files"]);
