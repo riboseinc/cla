@@ -187,3 +187,15 @@ describe("config: coverage by GitHub-org membership (issue #16 item 4)", () => {
     expect("errors" in emptySlug && emptySlug.errors.some((e) => e.path === "coverage.org_membership.corp-org")).toBe(true);
   });
 });
+
+describe("config: repos_without_cla validation", () => {
+  it("fails closed on malformed repo refs or a non-list value", async () => {
+    const badEntry = VALID.replace("repos_without_cla: [ example-org/mirror ]", "repos_without_cla: [ just-a-repo ]");
+    const r1 = await parseConfig(badEntry, reader);
+    expect("errors" in r1 && r1.errors.some((e) => e.path === "coverage.repos_without_cla")).toBe(true);
+
+    const notAList = VALID.replace("repos_without_cla: [ example-org/mirror ]", "repos_without_cla: example-org/mirror");
+    const r2 = await parseConfig(notAList, reader);
+    expect("errors" in r2 && r2.errors.some((e) => e.path === "coverage.repos_without_cla")).toBe(true);
+  });
+});

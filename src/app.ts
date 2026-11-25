@@ -144,9 +144,10 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           }
           // Keep the open-PR index fresh (rnpgp/rnp#2587): the sweep reads
           // this table instead of enumerating the estate per login.
+          // Excluded repos (repos_without_cla) never enter the index.
           const prLogin = pr["user"] && typeof pr["user"] === "object" ? ((pr["user"] as Record<string, unknown>)["login"] as string | undefined) : undefined;
           const idb = d1(env);
-          if (idb && prLogin) {
+          if (idb && prLogin && !GENERATED_CONFIG.coverage.reposWithoutCla.includes(repo.toLowerCase())) {
             try {
               await upsertOpenPr(idb, { repo, pr: number, login: prLogin, installationId: inst, headSha: sha });
             } catch {
