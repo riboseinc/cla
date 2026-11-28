@@ -125,7 +125,11 @@ these as a comment on your pull request:
 
 - `@ribose-cla help` — every command, listed in the thread.
 - `@ribose-cla agree` — sign from the pull request: the check posts
-  your personal sign link.
+  your personal sign link. (Where comment signing is fully-automatic,
+  the comment itself is the signature — and it also works on an
+  [issue](https://github.com/riboseinc/cla-signatures): comment it on
+  the pinned sign-here issue and the App's reply names the exact ICLA
+  version. No pull request needed.)
 - `@ribose-cla agree icla` — elect the Individual CLA when the check
   asks you to choose an agreement.
 - `@ribose-cla agree company=<org>` — elect your organization's CLA

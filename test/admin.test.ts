@@ -156,3 +156,53 @@ describe("PoC invitation + bypass + audit", () => {
     expect(body.entries.some((e) => e["action"] === "void")).toBe(true);
   });
 });
+
+describe("POST /admin/evaluate — per-step platform report (advisory forks)", () => {
+  it("happy path: installation -> pull -> probe -> verdict, every step reported ok", async () => {
+    fx.routes.set("/repos/rnpgp/rnp/installation", () => Response.json({ id: 42 }, { status: 200 }));
+    const res = await post("/admin/evaluate", { repo: "rnpgp/rnp", pr: 1, probe: true });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; steps: Array<Record<string, unknown>>; outcome: string };
+    expect(body.ok).toBe(true);
+    expect(body.steps.map((s) => s["step"])).toEqual(["installation", "pull", "check-run-probe", "evaluate"]);
+    expect(body.steps[0]).toMatchObject({ status: 200, ok: true, installation_id: 42 });
+    expect(body.steps[1]).toMatchObject({ status: 200, ok: true, head_sha: "abc123" });
+    expect(body.steps[2]).toMatchObject({ status: 201, ok: true });
+    expect(body.outcome).toContain("missing=1");
+
+    // the probe is a NEUTRAL run; the verdict run carries the kernel's outcome
+    const runs = fx.calls.filter((c) => c.method === "POST" && c.url.endsWith("/repos/rnpgp/rnp/check-runs"));
+    expect(runs).toHaveLength(2);
+    expect(runs[0]!.body).toMatchObject({ conclusion: "neutral" });
+    expect(runs[1]!.body).toMatchObject({ head_sha: "abc123", conclusion: "failure" });
+  });
+
+  it("installation lookup fails -> the report names step 1 and stops", async () => {
+    fx.routes.set("/repos/rnpgp/rnp/installation", () => Response.json({ message: "no installation" }, { status: 404 }));
+    const res = await post("/admin/evaluate", { repo: "rnpgp/rnp", pr: 1, probe: true });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; steps: Array<Record<string, unknown>>; error: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toContain("installation lookup failed (404)");
+    expect(body.steps).toHaveLength(1);
+    expect(body.steps[0]).toMatchObject({ step: "installation", status: 404, ok: false });
+    // no further platform calls: the report stopped at the wall
+    expect(fx.calls.some((c) => c.url.includes("/pulls/"))).toBe(false);
+  });
+
+  it("check-run creation refused -> the wall is named for the GitHub Support ticket, and nothing fakes a pass", async () => {
+    fx.routes.set("/repos/rnpgp/rnp/installation", () => Response.json({ id: 42 }, { status: 200 }));
+    fx.routes.set("/repos/rnpgp/rnp/check-runs", () => Response.json({ message: "Not Found" }, { status: 404 }));
+    const res = await post("/admin/evaluate", { repo: "rnpgp/rnp", pr: 1, probe: true });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; steps: Array<Record<string, unknown>> };
+    expect(body.ok).toBe(false);
+    const probe = body.steps.find((s) => s["step"] === "check-run-probe")!;
+    expect(probe).toMatchObject({ status: 404, ok: false });
+    expect(String(probe["note"])).toContain("GitHub Support");
+    // the evaluation never ran: no verdict attempt, no comment
+    expect(body.steps.find((s) => s["step"] === "evaluate")).toMatchObject({ ok: false });
+    expect(fx.calls.filter((c) => c.method === "POST" && c.url.endsWith("/check-runs"))).toHaveLength(1);
+    expect(fx.calls.some((c) => /\/issues\/\d+\/comments$/.test(c.url) && c.method === "POST")).toBe(false);
+  });
+});
