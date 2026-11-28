@@ -138,3 +138,33 @@ these as a comment on your pull request:
 - `@ribose-cla recheck` — re-run the check on the current head.
 
 The portal page at `/help` carries the same list.
+
+## Signing from a security advisory
+
+GitHub does not let any integration — including the Ribose CLA App — see
+security advisory pages or their temporary private forks. A comment on an
+advisory (even an `@ribose-cla` mention) never reaches the App, and the
+`cla/ribose` check cannot run on an advisory fork's pull requests. That is
+GitHub's platform rule, not a Ribose configuration.
+
+If your only surface is an advisory:
+
+- Sign at [cla.ribose.com/icla](https://cla.ribose.com/icla) — coverage is
+  per-person and instance-wide, so the fix lands cleanly when the advisory
+  merges.
+- Or open a pull request in a Ribose repository you legitimately contribute
+  to — for example the [signature venue][cla-signatures] — and comment
+  `@ribose-cla agree` there. Never open a public pull request carrying
+  details of an unpublished vulnerability.
+
+[cla-signatures]: https://github.com/riboseinc/cla-signatures
+
+## Two ways to sign in
+
+The portal proves your GitHub handle to bind the signature. Two entries:
+
+- **Sign in with GitHub** — the dual verification: authorize the Ribose CLA
+  App (proving the handle to the portal), then continue at id.ribose.com.
+- **Continue at id.ribose.com** — one standard sign-in through your Ribose
+  ID account; when it holds a linked GitHub identity, no App authorization
+  screen is shown.
