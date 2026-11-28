@@ -1075,20 +1075,87 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         return c.json({ error: "repo (owner/name) and pr are required" }, 400);
       }
       const api = portalApi(env, fetcher, now);
-      const inst = await api.appRequest("GET", `/repos/${repo}/installation`);
-      if (inst.status !== 200) return c.json({ error: `the app is not installed on ${repo} (${inst.status})` }, 400);
-      const installationId = (JSON.parse(inst.body) as { id?: number }).id;
-      if (!installationId) return c.json({ error: "installation lookup returned no id" }, 400);
-      let headSha = typeof body["head_sha"] === "string" ? (body["head_sha"] as string) : undefined;
-      if (!headSha) {
-        const prRes = await api.request(installationId, "GET", `/repos/${repo}/pulls/${pr}`);
-        if (prRes.status !== 200) return c.json({ error: `pull request lookup failed (${prRes.status})` }, 400);
-        headSha = (JSON.parse(prRes.body) as { head?: { sha?: string } }).head?.sha;
+
+      // The default contract: resolve the installation, read the PR
+      // (or take an explicit head_sha), evaluate, report the verdict.
+      if (body["probe"] !== true) {
+        const inst = await api.appRequest("GET", `/repos/${repo}/installation`);
+        if (inst.status !== 200) return c.json({ error: `the app is not installed on ${repo} (${inst.status})` }, 400);
+        const installationId = (JSON.parse(inst.body) as { id?: number }).id;
+        if (!installationId) return c.json({ error: "installation lookup returned no id" }, 400);
+        let headSha = typeof body["head_sha"] === "string" ? (body["head_sha"] as string) : undefined;
+        if (!headSha) {
+          const prRes = await api.request(installationId, "GET", `/repos/${repo}/pulls/${pr}`);
+          if (prRes.status !== 200) return c.json({ error: `pull request lookup failed (${prRes.status})` }, 400);
+          headSha = (JSON.parse(prRes.body) as { head?: { sha?: string } }).head?.sha;
+        }
+        if (!headSha) return c.json({ error: "the pull request has no head sha" }, 400);
+        const r = await evaluatePullRequest({ api, config: GENERATED_CONFIG, attributionSecret: env.OIDC_CLIENT_SECRET }, { installationId, repoFullName: repo, prNumber: pr, headSha });
+        await ops(c, "evaluate", `${repo}#${pr}`, r.outcome);
+        return c.json({ ok: true, ...r });
       }
-      if (!headSha) return c.json({ error: "the pull request has no head sha" }, 400);
-      const r = await evaluatePullRequest({ api, config: GENERATED_CONFIG, attributionSecret: env.OIDC_CLIENT_SECRET }, { installationId, repoFullName: repo, prNumber: pr, headSha });
-      await ops(c, "evaluate", `${repo}#${pr}`, r.outcome);
-      return c.json({ ok: true, ...r });
+
+      // probe:true — the per-step platform report for advisory forks.
+      // Each boundary is a named step with the exact endpoint and HTTP
+      // status, so ONE call shows which wall the platform raised.
+      // Diagnostic semantics: a failed step is REPORTED (ok:false,
+      // steps), never thrown into an opaque 500 — and never papered
+      // over: no step fakes a pass, the probe is conclusion "neutral",
+      // the verdict run carries the kernel's honest outcome.
+      const steps: Array<Record<string, unknown>> = [];
+
+      const inst = await api.appRequest("GET", `/repos/${repo}/installation`);
+      const installationId = inst.status === 200 ? (JSON.parse(inst.body) as { id?: number }).id : undefined;
+      steps.push({ step: "installation", endpoint: `GET /repos/${repo}/installation`, status: inst.status, ok: inst.status === 200 && installationId !== undefined, ...(installationId !== undefined ? { installation_id: installationId } : {}) });
+      if (installationId === undefined) {
+        await ops(c, "evaluate", `${repo}#${pr}`, `probe: installation lookup failed (${inst.status})`);
+        return c.json({ ok: false, steps, error: `installation lookup failed (${inst.status})` });
+      }
+
+      const prRes = await api.request(installationId, "GET", `/repos/${repo}/pulls/${pr}`);
+      const headSha = prRes.status === 200 ? (JSON.parse(prRes.body) as { head?: { sha?: string } }).head?.sha : undefined;
+      steps.push({ step: "pull", endpoint: `GET /repos/${repo}/pulls/${pr}`, status: prRes.status, ok: prRes.status === 200 && typeof headSha === "string", ...(typeof headSha === "string" ? { head_sha: headSha } : {}) });
+      if (typeof headSha !== "string") {
+        await ops(c, "evaluate", `${repo}#${pr}`, `probe: pull lookup failed (${prRes.status})`);
+        return c.json({ ok: false, steps, error: `pull request lookup failed (${prRes.status})` });
+      }
+
+      // The decisive wall: can THIS installation create a check run on
+      // THIS repo at all? A NEUTRAL probe under the required name — it
+      // carries no verdict and satisfies nothing by itself.
+      const probe = await api.request(installationId, "POST", `/repos/${repo}/check-runs`, {
+        body: {
+          name: CHECK_NAME,
+          head_sha: headSha,
+          status: "completed",
+          conclusion: "neutral",
+          output: { title: `CLA (${CHECK_NAME})`, summary: "Ops evaluation probe (POST /admin/evaluate); the verdict follows in its own run." },
+        },
+      });
+      steps.push({
+        step: "check-run-probe",
+        endpoint: `POST /repos/${repo}/check-runs`,
+        status: probe.status,
+        ok: probe.status === 201,
+        ...(probe.status !== 201 ? { note: "platform refused check-run creation — this is the wall; the App cannot satisfy the required check here, escalate to GitHub Support with this report" } : {}),
+      });
+
+      let outcome: string | undefined;
+      let handled = false;
+      if (steps[steps.length - 1]!.ok === true) {
+        try {
+          const r = await evaluatePullRequest({ api, config: GENERATED_CONFIG, attributionSecret: env.OIDC_CLIENT_SECRET }, { installationId, repoFullName: repo, prNumber: pr, headSha });
+          outcome = r.outcome;
+          handled = r.handled;
+        } catch (e) {
+          outcome = `evaluation failed: ${(e as Error).message}`;
+        }
+      }
+      steps.push({ step: "evaluate", ok: handled, outcome });
+
+      const ok = steps.every((s) => s.ok === true);
+      await ops(c, "evaluate", `${repo}#${pr}`, `probe ok=${ok} outcome=${outcome ?? "probe-failed"}`);
+      return c.json({ ok, steps, ...(outcome !== undefined ? { outcome } : {}) });
     });
 
     app.post("/admin/msa-sync-queue", async (c) => {
