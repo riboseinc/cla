@@ -122,9 +122,15 @@ describe("issue_comment: @ribose-cla agree", () => {
     expect(fx.calls.some((c) => c.method === "POST" && c.url.endsWith("/comments"))).toBe(false);
   });
 
-  it("bot comments and non-PR issues are ignored", async () => {
+  it("bot comments are ignored; issue commands outside the signature stay PR-only", async () => {
     expect(((await deliverComment(commentPayload("dependabot[bot]", "@ribose-cla agree"))).json() as Promise<Record<string, unknown>>)).resolves.toMatchObject({ ignored: expect.any(String) });
-    expect(((await deliverComment(commentPayload("stranger", "@ribose-cla agree", false))).json() as Promise<Record<string, unknown>>)).resolves.toMatchObject({ ignored: expect.any(String) });
+    expect(((await deliverComment(commentPayload("stranger", "@ribose-cla status", false))).json() as Promise<Record<string, unknown>>)).resolves.toMatchObject({ ignored: expect.any(String) });
+  });
+
+  it("issue agree with Option B OFF stays dark — nothing recorded", async () => {
+    const out = (await (await deliverComment(commentPayload("stranger", "@ribose-cla agree", false))).json()) as Record<string, unknown>;
+    expect(out).toMatchObject({ replied: false, reason: expect.stringContaining("not fully-automatic") });
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/icla/"))).toBe(false);
   });
 });
 
@@ -220,6 +226,54 @@ describe("Option B: fully-automatic comment signing (coverage.comment_signing.au
     expect(((await res.json()) as Record<string, unknown>)["reason"]).toBe("already-signed");
     expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/icla/"))).toBe(false);
     expect(lastReply()).not.toContain("/icla/complete");
+  });
+
+  // ---- the signature venue's "empty pull request": a plain issue ----
+
+  it("issue agree signs: the record lands, the reply names the instrument, no check runs", async () => {
+    const db = memoryDb();
+    const a = createApp({ ...ENV(pem), DB: db as unknown as D1Database }, { fetcher: fx.fetcher });
+    const raw = JSON.stringify(commentPayload("stranger", "@ribose-cla agree", false));
+    const sig = await hmacHex(WEBHOOK_SECRET, raw);
+    const res = await a.request("/api/github/webhook", {
+      method: "POST",
+      body: raw,
+      headers: { "content-type": "application/json", "x-github-event": "issue_comment", "x-hub-signature-256": `sha256=${sig}` },
+    });
+    expect(((await res.json()) as Record<string, unknown>)["reason"]).toBe("signed automatically");
+
+    const record = written()[Object.keys(written()).find((p) => p.startsWith("icla/"))!] as Record<string, unknown>;
+    expect(record).toMatchObject({ github_login: "stranger", source: "comment-auto", past_contributions_included: true });
+
+    const text = lastReply();
+    expect(text).toContain("@stranger");
+    expect(text).toContain("Individual CLA");
+    expect(text).toContain("/agreements/text/icla/");
+    expect(text).toContain("all your previous contributions");
+
+    // issues have no checks: nothing may POST a check run
+    expect(fx.calls.some((c) => c.method === "POST" && c.url.endsWith("/check-runs"))).toBe(false);
+    // the signer's open PRs (if any) still refresh via the sweep
+    expect(db.rows.some((r) => r.sql.includes("sweep_queue") && r.bind[0] === "stranger")).toBe(true);
+  });
+
+  it("issue agree from a separate-agreement registry login is refused: nothing recorded", async () => {
+    const res = await deliverComment(commentPayload("example-staff", "@ribose-cla agree", false));
+    expect(((await res.json()) as Record<string, unknown>)["reason"]).toBe("separate-agreement registry");
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/icla/"))).toBe(false);
+    expect(lastReply()).toContain("existing Ribose agreement");
+  });
+
+  it("issue agree when already signed answers idempotently", async () => {
+    const res = await deliverComment(commentPayload("tj-91", "@ribose-cla agree", false));
+    expect(((await res.json()) as Record<string, unknown>)["reason"]).toBe("already-signed");
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/icla/"))).toBe(false);
+  });
+
+  it("issue-scoped elections stay PR-only: agree company= is ignored on an issue", async () => {
+    const res = await deliverComment(commentPayload("stranger", "@ribose-cla agree company=example-org", false));
+    expect(((await res.json()) as Record<string, unknown>)["ignored"]).toBe("not a command on a PR");
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/"))).toBe(false);
   });
 });
 

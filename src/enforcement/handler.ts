@@ -342,6 +342,66 @@ export async function handleThirdPartyCommand(
   return { replied: true, reason: "third-party declaration recorded" };
 }
 
+/**
+ * `@ribose-cla agree` on a PLAIN ISSUE — the signature venue's
+ * "empty pull request" (GitHub has none). The record needs no PR
+ * context: login + edition + time. Option B gates it — the comment is
+ * the signature only where signing is fully-automatic — and every
+ * PR-side guard still applies: registry logins are never asked,
+ * already-signed answers idempotently. No check runs here; coverage
+ * applies at the contributor's actual pull requests, and the sweep
+ * refreshes any already open.
+ */
+export async function handleIssueAgreeCommand(
+  deps: EnforcementDeps,
+  args: { installationId: number; repoFullName: string; issueNumber: number; commenter: string; commenterId?: number },
+): Promise<{ replied: boolean; reason: string; signed?: boolean }> {
+  if (!deps.config.coverage.commentSigning.automatic) {
+    return { replied: false, reason: "comment signing is not fully-automatic on this instance" };
+  }
+  const editions = kernelEditions(deps.config);
+  const { snapshot } = await loadSnapshot(
+    { listRecords: makeListRecords(deps.api, deps.config.github.dataInstallationId, deps.config.github.dataRepo) },
+    editions,
+  );
+  const currentIcla = snapshot.iclas.find((r) => r.githubLogin.toLowerCase() === args.commenter.toLowerCase() && r.edition.textSha256 === editions.icla.textSha256);
+  if (currentIcla) {
+    await postBotReply(deps.api, args.installationId, args.repoFullName, args.issueNumber, `@${args.commenter} you already signed the Individual CLA v${currentIcla.edition.version} — you're covered.`);
+    return { replied: true, reason: "already-signed" };
+  }
+  const onRegistry = (deps.config.instance.separateAgreement?.logins ?? []).some((l) => l.toLowerCase() === args.commenter.toLowerCase());
+  if (onRegistry) {
+    await postBotReply(deps.api, args.installationId, args.repoFullName, args.issueNumber, `@${args.commenter} — this work is submitted under an existing Ribose agreement; the CLA process does not apply to you. Nothing was recorded.`);
+    return { replied: true, reason: "separate-agreement registry" };
+  }
+  await appendRecord(
+    { api: deps.api, installationId: deps.config.github.dataInstallationId, dataRepo: deps.config.github.dataRepo, now: () => Date.now() },
+    "icla",
+    {
+      id: await iclaRecordId(args.commenter, editions.icla.textSha256, Date.now()),
+      github_login: args.commenter,
+      ...(typeof args.commenterId === "number" ? { github_id: args.commenterId } : {}),
+      claEdition: editions.icla,
+      signed_at: new Date().toISOString(),
+      past_contributions_included: true,
+      source: "comment-auto",
+    },
+  );
+  const portalBase = `https://${deps.config.instance.portalHost}`;
+  await postBotReply(
+    deps.api,
+    args.installationId,
+    args.repoFullName,
+    args.issueNumber,
+    [
+      `@${args.commenter} — signed. The **[Individual CLA v${deps.config.legal.current.icla}](${portalBase}/agreements/text/icla/${deps.config.legal.current.icla})** is on record for you as of this comment, **including all your previous contributions**.`,
+      ``,
+      `_Recorded automatically from \`@ribose-cla agree\` (comment signing is fully-automatic on this instance): a GitHub-only signature record — no portal account, no identity subject. When you open a pull request in any Ribose repository, the cla/ribose check reflects it._`,
+    ].join("\n"),
+  );
+  return { replied: true, reason: "signed automatically", signed: true };
+}
+
 /** issue_comment.created — the `@ribose-cla` command grammar
  *  (docs/design.md §3.12 + issue #57). Only PR authors/committers get
  *  a reply; everyone else is silently ignored. A comment never grants

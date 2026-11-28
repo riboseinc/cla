@@ -244,3 +244,74 @@ describe("the separate-agreement registry never asks for a click (issue #100)", 
     expect(await view("never-registered")).toMatchObject({ separateAgreement: false });
   });
 });
+
+describe("portal auth: the identity-first flow", () => {
+  let pem: string;
+  let keys: OpKeys;
+  let fx: Fixture;
+
+  beforeEach(async () => {
+    pem = await makeKeyPem();
+    keys = await makeOpKeys();
+    fx = makeFixture();
+    const claims = {
+      iss: ISSUER, aud: CLIENT_ID, sub: "ribose-sub-1", exp: Math.floor(Date.now() / 1000) + 600,
+      email: "tj@mtg.example", email_verified: true, auth_time: Math.floor(Date.now() / 1000),
+      github_handle: "TJ-91", // the upstream-proven login; the portal lowercases it
+    };
+    opFixture(fx, keys, await mintIdToken(keys, claims, "der"));
+    // canonicalization: the portal pins the record to the live numeric account
+    fx.routes.set("/users/tj-91", () => Response.json({ login: "tj-91", id: 918273 }, { status: 200 }));
+    resetOidcCaches();
+  });
+
+  it("no App leg — the token's github_handle binds the session + LINK record", async () => {
+    const app = createApp(ENV(pem), { fetcher: fx.fetcher });
+    const r1 = await app.request("/signin/ribose");
+    expect(r1.status).toBe(302);
+    expect(r1.headers.get("location")).toContain(`${ISSUER}/authorize`);
+    // the GitHub App OAuth never happened: one consent, not two
+    expect(fx.calls.some((c) => c.url === "https://github.com/login/oauth/access_token")).toBe(false);
+
+    const authUrl = new URL(r1.headers.get("location")!);
+    const r2 = await app.request(`/callback/ribose?code=oidc-code&state=${authUrl.searchParams.get("state")}`, { headers: { cookie: `cla_flow=${cookieOf(r1, "cla_flow")}` } });
+    expect(r2.status).toBe(302);
+    const session = cookieOf(r2, SESSION_COOKIE);
+    expect(session).toBeDefined();
+
+    const put = fx.calls.find((c) => c.method === "PUT" && c.url.includes("/contents/link/"));
+    expect(put).toBeDefined();
+    const record = JSON.parse(Buffer.from((put!.body as Record<string, unknown>)["content"] as string, "base64").toString()) as Record<string, unknown>;
+    expect(record).toMatchObject({ ribose_id_sub: "ribose-sub-1", github_login: "tj-91", github_id: 918273, source: "portal-identity-link" });
+
+    const r3 = await app.request("/agreements", { headers: { cookie: `${SESSION_COOKIE}=${session}` } });
+    expect(r3.status).toBe(200);
+    const body3 = (await r3.json()) as Record<string, unknown>;
+    expect(body3["bound"]).toEqual({ ribose_id_sub: "ribose-sub-1", github_login: "tj-91", github_id: 918273 });
+  });
+
+  it("fail-closed: no github_handle claim -> 403, no session, no record", async () => {
+    const claims = { iss: ISSUER, aud: CLIENT_ID, sub: "ribose-sub-2", exp: Math.floor(Date.now() / 1000) + 600, email: "x@y.example", email_verified: true };
+    const token = await mintIdToken(keys, claims, "der");
+    fx.routes.set("/token", () => Response.json({ id_token: token }, { status: 200 }));
+    const app = createApp(ENV(pem), { fetcher: fx.fetcher });
+    const r1 = await app.request("/signin/ribose");
+    const authUrl = new URL(r1.headers.get("location")!);
+    const r2 = await app.request(`/callback/ribose?code=oidc-code&state=${authUrl.searchParams.get("state")}`, { headers: { cookie: `cla_flow=${cookieOf(r1, "cla_flow")}` } });
+    expect(r2.status).toBe(403);
+    expect(cookieOf(r2, SESSION_COOKIE)).toBeUndefined();
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/link/"))).toBe(false);
+  });
+
+  it("fail-closed: a handle whose live account disagrees is refused", async () => {
+    // the login was freed and re-registered: the claim names a stale handle
+    fx.routes.set("/users/tj-91", () => Response.json({ login: "someone-else", id: 555 }, { status: 200 }));
+    const app = createApp(ENV(pem), { fetcher: fx.fetcher });
+    const r1 = await app.request("/signin/ribose");
+    const authUrl = new URL(r1.headers.get("location")!);
+    const r2 = await app.request(`/callback/ribose?code=oidc-code&state=${authUrl.searchParams.get("state")}`, { headers: { cookie: `cla_flow=${cookieOf(r1, "cla_flow")}` } });
+    expect(r2.status).toBe(503);
+    expect(cookieOf(r2, SESSION_COOKIE)).toBeUndefined();
+    expect(fx.calls.some((c) => c.method === "PUT" && c.url.includes("/contents/link/"))).toBe(false);
+  });
+});

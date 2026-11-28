@@ -5,7 +5,7 @@ import type { FetchLike } from "./github/api";
 import { GENERATED_CONFIG } from "./generated/config";
 import { parseEvent, verifyWebhookSignature, installationId, repoFullName } from "./github/webhook";
 import { GithubApi } from "./github/api";
-import { evaluatePullRequest, evaluateDefaultBranchPush, closeMergedPullRequest, handleAgreeCommand, handleThirdPartyCommand, handleMetaCommand, preRegisterRepos, preRegisterInstallation, PRE_REGISTER_BATCH, type EnforcementDeps } from "./enforcement/handler";
+import { evaluatePullRequest, evaluateDefaultBranchPush, closeMergedPullRequest, handleAgreeCommand, handleIssueAgreeCommand, handleThirdPartyCommand, handleMetaCommand, preRegisterRepos, preRegisterInstallation, PRE_REGISTER_BATCH, type EnforcementDeps } from "./enforcement/handler";
 import { enqueueSweepFor, drainSweepStep } from "./enforcement/sweep";
 import { repoCoverageStep, DEFAULT_REPOS_PER_STEP, DEFAULT_COMMIT_WINDOW } from "./enforcement/report";
 import { CHECK_NAME } from "./enforcement/checks";
@@ -194,8 +194,21 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           if (!comment || !issue || !repo || !inst || typeof number !== "number" || !commenter || !prAuthor) {
             return c.json({ error: "payload missing expected fields" }, 400);
           }
-          if (!isPr || commenter.endsWith("[bot]")) {
-            return c.json({ ok: true, ignored: "not a command on a PR" });
+          if (commenter.endsWith("[bot]")) {
+            return c.json({ ok: true, ignored: "bot comment" });
+          }
+          if (!isPr) {
+            // Plain-issue commands: only the self-service signature —
+            // the signature venue's "empty pull request" (GitHub has
+            // no empty PRs; the sign-here issue is the clickwrap
+            // comment). Elections and join requests stay PR-scoped.
+            const issueAgree = parseAgreeCommand(bodyText);
+            if (!issueAgree || (issueAgree.kind !== "icla-completion" && issueAgree.kind !== "icla-elect")) {
+              return c.json({ ok: true, ignored: "not a command on a PR" });
+            }
+            const r = await handleIssueAgreeCommand(deps, { installationId: inst, repoFullName: repo, issueNumber: number, commenter, commenterId });
+            if (r.signed) await enqueueSweepFor(env, [commenter]);
+            return c.json({ ok: true, replied: r.replied, reason: r.reason });
           }
           const args = { installationId: inst, repoFullName: repo, prNumber: number, commenter, commenterId, prAuthor };
           let r: { replied: boolean; reason?: string; signed?: boolean };
@@ -289,6 +302,21 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
     // script must read it and echo it in the form, so no HttpOnly here.
     const csrfCookieOpts = (maxAge: number) => `; Path=/; Secure; SameSite=Lax; Max-Age=${maxAge}`;
 
+    app.get("/signin/ribose", async (c) => {
+      // Identity-first: the handle comes from the Ribose ID token's
+      // github_handle claim — the login the upstream sign-in itself
+      // proved. One standard sign-in consent, no App authorization
+      // screen; the dual flow (/signin/github) keeps the portal-owned
+      // re-proof for those who want it.
+      const state = randomToken();
+      const discovery = await discover(identity.issuer, identityFetcher, now());
+      const auth = await authorizationRequest(discovery, identity.clientId, `${portalBase}/callback/ribose`, randomToken);
+      const prior = await readStateCookie(env.OIDC_CLIENT_SECRET!, c.req.header("cookie")?.split(";").find((x) => x.trim().startsWith("cla_flow="))?.split("=").slice(1).join("="), now());
+      const carry = prior && (prior["flow"] === "ribose" || prior["flow"] === "github") ? { ...(prior["next"] ? { next: prior["next"] } : {}), ...(prior["tlogin"] ? { tlogin: prior["tlogin"] } : {}) } : {};
+      c.header("Set-Cookie", `cla_flow=${await makeStateCookie(env.OIDC_CLIENT_SECRET!, { flow: "ribose", state: auth.state, verifier: auth.verifier, ...carry }, now())}${cookieOpts(600)}`);
+      return c.redirect(auth.url.toString());
+    });
+
     app.get("/signin/github", async (c) => {
       const state = randomToken();
       const url = githubAuthorizeUrl(env.GITHUB_APP_CLIENT_ID!, `${portalBase}/callback/github`, state);
@@ -322,19 +350,41 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
       const readCookie = (name: string) => cookieHeader.split(";").find((x) => x.trim().startsWith(`${name}=`))?.split("=").slice(1).join("=");
       const flow = await readStateCookie(env.OIDC_CLIENT_SECRET!, readCookie("cla_flow"), now());
       const code = c.req.query("code");
-      if (!flow || flow["flow"] !== "ribose" || !code || !flow["ghLogin"]) {
+      if (!flow || flow["flow"] !== "ribose" || !code) {
         return c.json({ error: "invalid or expired sign-in state" }, 400);
       }
       const discovery = await discover(identity.issuer, identityFetcher, now());
       const idToken = await exchangeCode(discovery, identity.clientId, env.OIDC_CLIENT_SECRET!, `${portalBase}/callback/ribose`, code, flow["verifier"]!, identityFetcher);
       const claims = await verifyIdToken(discovery, idToken, identity.issuer, identity.clientId, identityFetcher, now());
 
+      // Bind the handle. Dual flow: the GitHub App leg proved it (on the
+      // flow cookie). Identity-first: the token's github_handle — the
+      // login the upstream sign-in itself proved — canonicalized live
+      // against GitHub so the record pins the numeric account id and a
+      // renamed-and-reclaimed handle cannot masquerade.
+      const claimHandle = typeof claims.github_handle === "string" && claims.github_handle !== "" ? claims.github_handle.toLowerCase() : undefined;
+      const ghLogin = typeof flow["ghLogin"] === "string" ? flow["ghLogin"].toLowerCase() : claimHandle;
+      if (!ghLogin) {
+        return c.json({ error: "this Ribose ID account carries no linked GitHub identity — sign in with GitHub" }, 403);
+      }
+      const api = new GithubApi({ fetcher, now, appId: env.GITHUB_APP_ID ?? "", privateKeyPem: (env.APP_PRIVATE_KEY ?? "").replaceAll("\\n", "\n"), tokenCache: TOKEN_CACHE, etagCache: ETAG_CACHE });
+      let githubId: number;
+      if (typeof flow["ghId"] === "string") {
+        githubId = Number(flow["ghId"]);
+      } else {
+        const res = await api.request(GENERATED_CONFIG.github.dataInstallationId, "GET", `/users/${ghLogin}`);
+        const doc = res.status === 200 ? (JSON.parse(res.body) as Record<string, unknown>) : undefined;
+        const resolvedLogin = typeof doc?.["login"] === "string" ? (doc["login"] as string).toLowerCase() : undefined;
+        if (res.status !== 200 || resolvedLogin !== ghLogin || typeof doc?.["id"] !== "number") {
+          return c.json({ error: "the linked GitHub handle could not be verified against GitHub" }, 503);
+        }
+        githubId = doc["id"] as number;
+      }
+      const ghName = typeof flow["ghName"] === "string" ? flow["ghName"] : undefined;
+
       // Both identities proven: write the LINK record (append-only).
       // A repeated sign-in must NOT append a second identical binding:
       // the existing (github_id, sub, login) record is already the truth.
-      const api = new GithubApi({ fetcher, now, appId: env.GITHUB_APP_ID ?? "", privateKeyPem: (env.APP_PRIVATE_KEY ?? "").replaceAll("\\n", "\n"), tokenCache: TOKEN_CACHE, etagCache: ETAG_CACHE });
-      const githubId = Number(flow["ghId"]);
-      const ghLogin = String(flow["ghLogin"]);
       const { links } = await loadSnapshot(
         { listRecords: makeListRecords(api, GENERATED_CONFIG.github.dataInstallationId, GENERATED_CONFIG.github.dataRepo, ["link/"]) },
         kernelEditions(GENERATED_CONFIG),
@@ -344,16 +394,16 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
         await appendRecord(
           { api, installationId: GENERATED_CONFIG.github.dataInstallationId, dataRepo: GENERATED_CONFIG.github.dataRepo, now },
           "link",
-          { ribose_id_sub: claims.sub, github_login: ghLogin, github_id: githubId, linked_at: new Date(now()).toISOString(), source: "portal-dual-flow" },
+          { ribose_id_sub: claims.sub, github_login: ghLogin, github_id: githubId, linked_at: new Date(now()).toISOString(), source: typeof flow["ghLogin"] === "string" ? "portal-dual-flow" : "portal-identity-link" },
         );
       }
 
       const csrf = newCsrfToken();
-      c.header("Set-Cookie", `${SESSION_COOKIE}=${await makeSessionCookie(env.OIDC_CLIENT_SECRET!, { sub: claims.sub, login: flow["ghLogin"], githubId: Number(flow["ghId"]), email: typeof claims.email === "string" ? claims.email : undefined, emailVerified: claims.email_verified === true }, now())}${cookieOpts(8 * 3600)}`);
+      c.header("Set-Cookie", `${SESSION_COOKIE}=${await makeSessionCookie(env.OIDC_CLIENT_SECRET!, { sub: claims.sub, login: ghLogin, githubId, ...(ghName ? { name: ghName } : {}), email: typeof claims.email === "string" ? claims.email : undefined, emailVerified: claims.email_verified === true }, now())}${cookieOpts(8 * 3600)}`);
       c.header("Set-Cookie", `${CSRF_COOKIE}=${csrf}${csrfCookieOpts(8 * 3600)}`, { append: true });
       c.header("Set-Cookie", `cla_flow=; Path=/; HttpOnly; Max-Age=0`, { append: true });
       // a completion flow insists the proven handle is the invited login
-      if (flow["tlogin"] && flow["tlogin"] !== flow["ghLogin"]) {
+      if (flow["tlogin"] && flow["tlogin"] !== ghLogin) {
         return c.json({ error: "only the committer may complete this signature" }, 403);
       }
       return c.redirect(`${portalBase}${flow["next"] ?? "/agreements"}`);
