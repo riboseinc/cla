@@ -136,7 +136,7 @@ describe("issue_comment: ignored meta commands", () => {
   it.each(["help", "status", "recheck"])("ignores %s from bots", async (command) => {
     const res = await deliverComment(commentPayload("dependabot[bot]", `@ribose-cla ${command}`));
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ignored: "not a command on a PR" });
+    expect(await res.json()).toMatchObject({ ignored: "bot comment" });
     expect(fx.calls).toEqual([]);
   });
 

@@ -5,7 +5,7 @@ import type { FetchLike } from "./github/api";
 import { GENERATED_CONFIG } from "./generated/config";
 import { parseEvent, verifyWebhookSignature, installationId, repoFullName } from "./github/webhook";
 import { GithubApi } from "./github/api";
-import { evaluatePullRequest, evaluateDefaultBranchPush, closeMergedPullRequest, handleAgreeCommand, handleThirdPartyCommand, handleMetaCommand, preRegisterRepos, preRegisterInstallation, PRE_REGISTER_BATCH, type EnforcementDeps } from "./enforcement/handler";
+import { evaluatePullRequest, evaluateDefaultBranchPush, closeMergedPullRequest, handleAgreeCommand, handleIssueAgreeCommand, handleThirdPartyCommand, handleMetaCommand, preRegisterRepos, preRegisterInstallation, PRE_REGISTER_BATCH, type EnforcementDeps } from "./enforcement/handler";
 import { enqueueSweepFor, drainSweepStep } from "./enforcement/sweep";
 import { repoCoverageStep, DEFAULT_REPOS_PER_STEP, DEFAULT_COMMIT_WINDOW } from "./enforcement/report";
 import { CHECK_NAME } from "./enforcement/checks";
@@ -194,8 +194,21 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
           if (!comment || !issue || !repo || !inst || typeof number !== "number" || !commenter || !prAuthor) {
             return c.json({ error: "payload missing expected fields" }, 400);
           }
-          if (!isPr || commenter.endsWith("[bot]")) {
-            return c.json({ ok: true, ignored: "not a command on a PR" });
+          if (commenter.endsWith("[bot]")) {
+            return c.json({ ok: true, ignored: "bot comment" });
+          }
+          if (!isPr) {
+            // Plain-issue commands: only the self-service signature —
+            // the signature venue's "empty pull request" (GitHub has
+            // no empty PRs; the sign-here issue is the clickwrap
+            // comment). Elections and join requests stay PR-scoped.
+            const issueAgree = parseAgreeCommand(bodyText);
+            if (!issueAgree || (issueAgree.kind !== "icla-completion" && issueAgree.kind !== "icla-elect")) {
+              return c.json({ ok: true, ignored: "not a command on a PR" });
+            }
+            const r = await handleIssueAgreeCommand(deps, { installationId: inst, repoFullName: repo, issueNumber: number, commenter, commenterId });
+            if (r.signed) await enqueueSweepFor(env, [commenter]);
+            return c.json({ ok: true, replied: r.replied, reason: r.reason });
           }
           const args = { installationId: inst, repoFullName: repo, prNumber: number, commenter, commenterId, prAuthor };
           let r: { replied: boolean; reason?: string; signed?: boolean };
