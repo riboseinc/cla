@@ -5,7 +5,7 @@ import type { FetchLike } from "./github/api";
 import { GENERATED_CONFIG } from "./generated/config";
 import { parseEvent, verifyWebhookSignature, installationId, repoFullName } from "./github/webhook";
 import { GithubApi } from "./github/api";
-import { evaluatePullRequest, closeMergedPullRequest, handleAgreeCommand, handleThirdPartyCommand, handleMetaCommand, preRegisterRepos, preRegisterInstallation, PRE_REGISTER_BATCH, type EnforcementDeps } from "./enforcement/handler";
+import { evaluatePullRequest, evaluateDefaultBranchPush, closeMergedPullRequest, handleAgreeCommand, handleThirdPartyCommand, handleMetaCommand, preRegisterRepos, preRegisterInstallation, PRE_REGISTER_BATCH, type EnforcementDeps } from "./enforcement/handler";
 import { enqueueSweepFor, drainSweepStep } from "./enforcement/sweep";
 import { repoCoverageStep, DEFAULT_REPOS_PER_STEP, DEFAULT_COMMIT_WINDOW } from "./enforcement/report";
 import { CHECK_NAME } from "./enforcement/checks";
@@ -250,6 +250,27 @@ export function createApp(env: Env, overrides?: { fetcher?: FetchLike; now?: () 
             return c.json({ error: `pre-registration failed: ${outcome.failed[0]!.reason}`, failed: outcome.failed }, 503);
           }
           return c.json({ ok: true, preregistered: outcome.done, failed: outcome.failed, deferred: outcome.deferred.length });
+        }
+        if (evt.event === "check_suite" && evt.action === "requested") {
+          // Fires for pushes AND "Re-run all checks". A PR-branch suite
+          // belongs to the pull_request legs; only the default branch
+          // is this leg's business.
+          const suite = evt.payload["check_suite"] as Record<string, unknown> | undefined;
+          const repository = evt.payload["repository"] as Record<string, unknown> | undefined;
+          const branch = typeof suite?.["head_branch"] === "string" ? (suite["head_branch"] as string) : undefined;
+          const defaultBranch = typeof repository?.["default_branch"] === "string" ? (repository["default_branch"] as string) : undefined;
+          const headSha = typeof suite?.["head_sha"] === "string" ? (suite["head_sha"] as string) : undefined;
+          const before = typeof suite?.["before"] === "string" ? (suite["before"] as string) : undefined;
+          const repo = repoFullName(evt.payload);
+          const inst = installationId(evt.payload);
+          if (!suite || !repo || !inst || !headSha || !before || !branch || !defaultBranch) {
+            return c.json({ error: "payload missing expected fields" }, 400);
+          }
+          if (branch !== defaultBranch) {
+            return c.json({ ok: true, ignored: "check_suite on a non-default branch (the pull_request legs own it)" });
+          }
+          const r = await evaluateDefaultBranchPush(deps, { installationId: inst, repoFullName: repo, headSha, before });
+          return c.json({ ok: true, outcome: r.outcome });
         }
         return c.json({ ok: true, ignored: `${evt.event}/${evt.action ?? "*"}` });
       } catch (e) {

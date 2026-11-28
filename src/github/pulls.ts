@@ -29,7 +29,10 @@ export async function fetchPrCommitters(api: GithubApi, installationId: number, 
   if (res.status !== 200) throw new Error(`pulls commits failed: ${res.status}`);
   const commits = JSON.parse(res.body) as Array<Record<string, unknown>>;
   const truncated = commits.length >= 250;
+  return { committers: committersFromCommitList(commits), truncated };
+}
 
+const committersFromCommitList = (commits: Array<Record<string, unknown>>): Committer[] => {
   const byKey = new Map<string, Committer>();
   for (const c of commits) {
     if (isBot(c["author"])) continue;
@@ -41,7 +44,30 @@ export async function fetchPrCommitters(api: GithubApi, installationId: number, 
     const key = login ?? `email:${email}`;
     if (!byKey.has(key)) byKey.set(key, { login, email });
   }
-  return { committers: [...byKey.values()], truncated };
+  return [...byKey.values()];
+};
+
+/** Commits that LANDED on a branch (compare before...head): the
+ *  default-branch push leg's committer source. The compare endpoint
+ *  caps its commit list at 250; a larger `total_commits` marks the
+ *  result truncated — the caller fails the check honestly. */
+export type PushDiff = PrCommitters & { stats: { files: number; codeLines: number } | undefined };
+
+export async function fetchPushDiff(api: GithubApi, installationId: number, repoFullName: string, before: string, headSha: string): Promise<PushDiff> {
+  const res = await api.request(installationId, "GET", `/repos/${repoFullName}/compare/${before}...${headSha}`);
+  if (res.status !== 200) throw new Error(`compare failed: ${res.status}`);
+  const cmp = obj(JSON.parse(res.body));
+  const commits = Array.isArray(cmp["commits"]) ? (cmp["commits"] as Array<Record<string, unknown>>) : [];
+  const total = typeof cmp["total_commits"] === "number" ? (cmp["total_commits"] as number) : commits.length;
+  const truncated = total > commits.length;
+  const files = Array.isArray(cmp["files"]) ? (cmp["files"] as Array<Record<string, unknown>>) : [];
+  let stats: PushDiff["stats"];
+  if (files.length > 0) {
+    let codeLines = 0;
+    for (const f of files) codeLines += (typeof f["additions"] === "number" ? (f["additions"] as number) : 0) + (typeof f["deletions"] === "number" ? (f["deletions"] as number) : 0);
+    stats = { files: files.length, codeLines };
+  }
+  return { committers: committersFromCommitList(commits), truncated, stats };
 }
 
 const obj = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {});
