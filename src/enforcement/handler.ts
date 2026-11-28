@@ -4,7 +4,7 @@ import { evaluate } from "@riboseinc/cla-kernel";
 import type { AppConfig } from "../config";
 import { kernelEditions } from "../config";
 import { loadSnapshot, oclaForSlug } from "../store/load";
-import { fetchPrCommitters, fetchPrStats, fetchPrHeadSha } from "../github/pulls";
+import { fetchPrCommitters, fetchPrStats, fetchPrHeadSha, fetchPushDiff } from "../github/pulls";
 import type { GithubApi } from "../github/api";
 import { makeListRecords } from "../store/github-store";
 import { appendRecord } from "../store/write";
@@ -148,8 +148,63 @@ export async function evaluatePullRequest(
   return { handled: true, outcome: `verdict=${verdict.verdict} missing=${verdict.missing.length} specify=${Object.keys(verdict.mustSpecify).length} records=${loaded.snapshot.iclas.length}I/${loaded.snapshot.oclas.length}O editions=${editions.icla.textSha256.slice(0, 8)}/${editions.ocla.textSha256.slice(0, 8)}` };
 }
 
-/** pull_request.closed + merged — the closing attribution statement (deduped). */
-export async function closeMergedPullRequest(
+/**
+ * check_suite.requested on the DEFAULT branch — commits that landed
+ * outside any pull request this App evaluated: advisory merges (whose
+ * pull requests live in temporary private forks no integration can
+ * see), merge commits pushed by VCS bridges, direct admin pushes.
+ * Same kernel, same fail-closed posture; there is no PR thread, so
+ * the verdict lands only as the check run — the record a required
+ * check can demand at merge time.
+ */
+export async function evaluateDefaultBranchPush(
+  deps: EnforcementDeps,
+  args: { installationId: number; repoFullName: string; headSha: string; before: string },
+): Promise<{ handled: boolean; outcome: string }> {
+  const full = args.repoFullName;
+  const org = full.split("/")[0] ?? "";
+  const repo = full.split("/")[1] ?? "";
+  if (deps.config.coverage.reposWithoutCla.includes(full.toLowerCase())) {
+    return { handled: false, outcome: "repo is in repos_without_cla (out of scope by config)" };
+  }
+  if (!args.before || /^0+$/.test(args.before)) {
+    return { handled: false, outcome: "branch created; nothing to evaluate" };
+  }
+
+  const push = await fetchPushDiff(deps.api, args.installationId, full, args.before, args.headSha);
+  if (push.truncated) {
+    await createCheckRun(deps.api, args.installationId, full, args.headSha, {
+      name: CHECK_NAME_LOCAL,
+      status: "completed",
+      conclusion: "failure",
+      output: { title: `CLA (${CHECK_NAME_LOCAL})`, summary: "The push exceeds the compare endpoint's commit cap; authorship cannot be fully evaluated. Ask the maintainers to evaluate manually." },
+    });
+    return { handled: true, outcome: "truncated-push -> failing check" };
+  }
+
+  const editions = kernelEditions(deps.config);
+  const loaded = await loadSnapshot(
+    { listRecords: makeListRecords(deps.api, deps.config.github.dataInstallationId, deps.config.github.dataRepo) },
+    editions,
+  );
+  loaded.snapshot.msaLogins = deps.config.instance.separateAgreement?.logins ?? [];
+  loaded.snapshot.msaEmails = deps.config.instance.separateAgreement?.emails ?? [];
+  if (loaded.editionDivergences.length > 0) {
+    const d = loaded.editionDivergences[0]!;
+    await createCheckRun(deps.api, args.installationId, full, args.headSha, staleDeploymentBody(d));
+    return {
+      handled: true,
+      outcome: `stale-deployment: ${d.path} declares ${d.kind} v${d.version} sha ${d.recordSha256.slice(0, 8)}, this deploy compiled ${d.currentSha256.slice(0, 8)}`,
+    };
+  }
+  const verdict = await evaluateWithOrgMembership(deps.api, deps.config, loaded.snapshot, () =>
+    evaluate({ context: { org, repo }, committers: push.committers, diff: push.stats }, loaded.snapshot, deps.config, editions),
+  );
+  await createCheckRun(deps.api, args.installationId, full, args.headSha, checkRunBody(verdict, `https://${deps.config.instance.portalHost}`, deps.config.instance.signingDocsUrl));
+  return { handled: true, outcome: `verdict=${verdict.verdict} missing=${verdict.missing.length} specify=${Object.keys(verdict.mustSpecify).length}` };
+}
+
+/** pull_request.closed + merged — the closing attribution statement (deduped). */export async function closeMergedPullRequest(
   deps: EnforcementDeps,
   args: { installationId: number; repoFullName: string; prNumber: number },
 ): Promise<{ posted: boolean }> {

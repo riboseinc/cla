@@ -20,7 +20,11 @@ export type Committer = {
 };
 
 export type PrInput = {
-  context: { org: string; repo: string; pr: number };
+  /** `pr` is absent when the commits landed on the default branch
+   *  outside any pull request (advisory merges, VCS-bridge pushes):
+   *  the same coverage evaluation, with no PR-scoped attribution
+   *  election to consult. */
+  context: { org: string; repo: string; pr?: number };
   committers: Committer[];
   /** The PR's size (files changed, additions+deletions) — the
    *  proportionality control's input; the caller resolves it. */
@@ -309,6 +313,7 @@ export function evaluate(pr: PrInput, snap: StoreSnapshot, cfg: Config, editions
       const chosen = resolvedLogin
         ? (snap.attributions ?? []).find(
             (a) =>
+              pr.context.pr !== undefined &&
               a.pr === pr.context.pr &&
               normalize(a.repo) === normalize(`${pr.context.org}/${pr.context.repo}`) &&
               normalize(a.login) === normalize(resolvedLogin),

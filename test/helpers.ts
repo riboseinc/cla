@@ -121,6 +121,17 @@ export function makeFixture(): Fixture {
       });
     }
     if (/\/repos\/rnpgp\/rnp\/pulls\/\d+$/.test(u.pathname)) return json(200, { changed_files: 12, additions: 200, deletions: 100, head: { sha: "abc123" } });
+    // default-branch push compare (the check_suite leg's committer source)
+    if (/\/repos\/rnpgp\/rnp\/compare\/.+\.\.\..+/.test(u.pathname)) {
+      return json(200, {
+        total_commits: 2,
+        commits: [
+          { sha: "m1", author: { login: "tj-91", type: "User" }, commit: { author: { email: "johannes@mtg.example" } } },
+          { sha: "m2", author: { login: "stranger", type: "User" }, commit: { author: { email: "s@x.example" } } },
+        ],
+        files: [{ additions: 120, deletions: 40 }, { additions: 10, deletions: 2 }],
+      });
+    }
     // write-endpoint defaults (tests assert on captured calls)
     if (u.pathname.endsWith("/check-runs") && init?.method === "POST") return json(201, {});
     if (u.pathname.includes("/contents/") && init?.method === "PUT") return json(201, { commit: { sha: "commit1" } });
@@ -145,8 +156,18 @@ export function pullRequestPayload(over: Record<string, unknown> = {}): Record<s
   };
 }
 
-export async function signedBody(secret: string, payload: unknown): Promise<{ body: string; headers: Record<string, string> }> {
+export function checkSuitePayload(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    action: "requested",
+    installation: { id: 42 },
+    repository: { full_name: "rnpgp/rnp", default_branch: "main" },
+    check_suite: { head_branch: "main", head_sha: "merge123", before: "oldsha", pull_requests: [] },
+    ...over,
+  };
+}
+
+export async function signedBody(secret: string, payload: unknown, event = "pull_request"): Promise<{ body: string; headers: Record<string, string> }> {
   const body = JSON.stringify(payload);
   const sig = await hmacHex(secret, body);
-  return { body, headers: { "content-type": "application/json", "x-github-event": "pull_request", "x-hub-signature-256": `sha256=${sig}` } };
+  return { body, headers: { "content-type": "application/json", "x-github-event": event, "x-hub-signature-256": `sha256=${sig}` } };
 }
